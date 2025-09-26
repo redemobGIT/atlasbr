@@ -40,8 +40,6 @@ MUNICIPALITIES = _load_municipalities()
 # Cada dicionário contém caminhos mais específicos para organizar os resultados obtidos.
 
 RAIS = {
-    "year": YEAR,
-    "cnes_month": 8,
     "output_dir": OUTPUTS_DIR / "rais",
     "data_dir": OUTPUTS_DIR / "rais" / "data",
     "figures_dir": OUTPUTS_DIR / "rais" / "figures",
