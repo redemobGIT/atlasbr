@@ -1,39 +1,72 @@
-[tool.poetry]
-name = "urbikit"
-version = "0.1.0"
-description = "Kit enxuto para ingestão, limpeza, transformação, operações espaciais e visualização de dados urbanos."
-authors = ["Seu Nome <seu.email@exemplo.com>"]
-readme = "README.md"
-packages = [{ include = "urbikit" }]
-license = "MIT"
-
-[tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-pandas = "^2.2.0"
-geopandas = "^0.14.0"
-shapely = "^2.0.0"
-pyproj = "^3.6.0"
-h3 = "^3.7.6"
-tobler = "^0.11.2"
-plotly = "^5.24.0"
-typer = {version = "^0.12.3", extras = ["all"]}
-python-dotenv = "^1.0.1"
-pandas-gbq = "^0.22.0"
-google-cloud-bigquery = "^3.25.0"
-geobr = "^0.2.3"
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.5.6"
-black = "^24.8.0"
-pytest = "^8.3.0"
-
-[tool.ruff]
-line-length = 79
-select = ["E","F","W","I","B","C90"]
-
-[tool.black]
-line-length = 79
-
 [build-system]
-requires = ["poetry-core>=1.8.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roda"
+version = "0.1.0"
+authors = [
+  { name="Seu Nome", email="seu.email@exemplo.com" },
+]
+description = "Uma biblioteca Python para análises de mobilidade urbana."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License", # Ou outra licença de sua escolha
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    # Dependências principais de análise e dados
+    "pandas>=2.2,<2.3",
+    "geopandas>=1.0,<1.1",
+    "numpy>=1.26,<1.27",
+    "scikit-learn>=1.6,<1.7",
+    "matplotlib>=3.10,<3.11",
+    "seaborn>=0.13,<0.14",
+    "plotly>=6.0,<6.1",
+    "folium>=0.20,<0.21",
+    "shapely>=2.1,<2.2",
+    "pyproj>=3.7,<3.8",
+    "rtree>=1.0,<1.1",
+    "fiona>=1.10,<1.11",
+    "rasterio>=1.4,<1.5",
+    "contextily>=1.6,<1.7",
+    "osmnx>=2.0,<2.1",
+    "pandana>=0.7,<0.8",
+    "networkx>=3.4,<3.5",
+    "scipy>=1.15,<1.16",
+    "statsmodels>=0.14,<0.15",
+    "sqlalchemy>=2.0,<2.1",
+    "mapclassify>=2.6,<2.7",
+    "tobler>=1.0,<1.1",     
+    
+    # Dependências do 'pip'
+    "basedosdados==2.0.2",
+    "geobr==0.2.2",
+    "gtfs-kit==10.3.1",
+    "ipeadatapy==0.1.9",
+    "cityseer==4.21.1",
+    "peartree==0.6.4",
+    "urbanaccess==0.2.2",
+    "r5py==1.0.6",
+    "cartopy==0.24.1",
+    
+    # Dependências para ambiente Jupyter
+    "jupyterlab>=4.4,<4.5",
+    "notebook",
+    "ipykernel>=6.29,<6.30",
+
+    # Utilitários e Configuração
+    "python-dotenv",
+]
+
+[project.urls]
+Homepage = "https://github.com/usuario/roda" # URL do repositório
+Issues = "https://github.com/usuario/roda/issues"
+
+[tool.setuptools]
+packages = ["roda"]
+package-dir = {"" = "src"}
