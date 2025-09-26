@@ -6,8 +6,11 @@
 !README.md
 
 !data
-!notebooks
+!data/*
 !docs
+!notebooks
+!notebooks/rais.ipynb
+!notebooks/sdg.ipynb
 !outputs
 
 
