@@ -6,66 +6,56 @@ build-backend = "setuptools.build_meta"
 name = "roda"
 version = "0.1.0"
 authors = [
-  { name="Seu Nome", email="seu.email@exemplo.com" },
+  { name="Nome", email="email@exemplo.com" },
 ]
 description = "Uma biblioteca Python para análises de mobilidade urbana."
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License", # Ou outra licença de sua escolha
-    "Operating System :: OS Independent",
-    "Topic :: Scientific/Engineering",
-    "Intended Audience :: Science/Research",
 ]
-dependencies = [
-    # Dependências principais de análise e dados
-    "pandas>=2.2,<2.3",
-    "geopandas>=1.0,<1.1",
-    "numpy>=1.26,<1.27",
-    "scikit-learn>=1.6,<1.7",
-    "matplotlib>=3.10,<3.11",
-    "seaborn>=0.13,<0.14",
-    "plotly>=6.0,<6.1",
-    "folium>=0.20,<0.21",
-    "shapely>=2.1,<2.2",
-    "pyproj>=3.7,<3.8",
-    "rtree>=1.0,<1.1",
-    "fiona>=1.10,<1.11",
-    "rasterio>=1.4,<1.5",
-    "contextily>=1.6,<1.7",
-    "osmnx>=2.0,<2.1",
-    "pandana>=0.7,<0.8",
-    "networkx>=3.4,<3.5",
-    "scipy>=1.15,<1.16",
-    "statsmodels>=0.14,<0.15",
-    "sqlalchemy>=2.0,<2.1",
-    "mapclassify>=2.6,<2.7",
-    "tobler>=1.0,<1.1",     
-    
-    # Dependências do 'pip'
-    "basedosdados==2.0.2",
-    "geobr==0.2.2",
-    "gtfs-kit==10.3.1",
-    "ipeadatapy==0.1.9",
-    "cityseer==4.21.1",
-    "peartree==0.6.4",
-    "urbanaccess==0.2.2",
-    "r5py==1.0.6",
-    "cartopy==0.24.1",
-    
-    # Dependências para ambiente Jupyter
-    "jupyterlab>=4.4,<4.5",
-    "notebook",
-    "ipykernel>=6.29,<6.30",
 
-    # Utilitários e Configuração
+dependencies = [
+    "pandas",
+    "geopandas",
+    "numpy",
+    "scikit-learn",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "folium",
+    "contextily",
+    "geobr",
+    "h3",
+    "osmnx",
+    "gtfs-kit",
+    "pandana",
+    "tobler",
+    "libpysal",
+    "rtree",
+    "basedosdados",
+    "ipeadatapy",
+    "jupyterlab",
+    "notebook",
+    "ipykernel",
     "python-dotenv",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "black",
+    "mypy",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
 ]
 
 [project.urls]
-Homepage = "https://github.com/usuario/roda" # URL do repositório
-Issues = "https://github.com/usuario/roda/issues"
+Homepage = "https://github.com/redemobGIT/atlasbr"
+Issues = "https://github.com/redemobGIT/atlasbr/issues"
 
 [tool.setuptools]
 packages = ["roda"]
