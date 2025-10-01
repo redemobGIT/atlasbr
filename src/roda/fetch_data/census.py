@@ -9,7 +9,7 @@ import requests
 import numpy as np
 import geobr
 
-from .ibge import get_urban_area_gdf
+from .urban_area import get_urban_area_gdf
 
 # =============================================================================
 # MAPEAMENTOS E CONSTANTES INTERNAS
