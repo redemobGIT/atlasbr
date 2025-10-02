@@ -1,6 +1,7 @@
 import pandas as pd
 import geopandas as gpd
-from typing import Mapping, Sequence, Tuple
+import json
+from typing import Mapping, Sequence, Tuple, List, Dict
 
 
 def geometry_from_wkt(
@@ -82,3 +83,31 @@ def override_geometry(
         working = working.reset_index(drop=True)
 
     return working
+
+
+def prepare_geodata(
+    gdf: gpd.GeoDataFrame, id_col: str, year_col: str, vars_to_show: List[str]
+) -> Tuple[gpd.GeoDataFrame, Dict, List[str], List[int]]:
+    """
+    Prepares the GeoDataFrame and extracts the base GeoJSON for the map.
+    """
+    cols_needed = [year_col, id_col, "geometry", *vars_to_show]
+    gdf = gdf[cols_needed].dropna(subset=[id_col, "geometry"]).copy()
+    gdf = gdf.to_crs(4326)
+    gdf[id_col] = gdf[id_col].astype(str)
+
+    # Ensure consistent integer-like year ordering even if dtype is object
+    years = sorted(pd.unique(gdf[year_col].astype(int)).tolist())
+
+    geo_base = (
+        gdf[[id_col, "geometry"]]
+        .drop_duplicates(subset=[id_col])
+        .set_index(id_col)
+        .sort_index()
+    )
+
+    # Keep the ID as a property in the GeoJSON
+    geojson = json.loads(geo_base.reset_index().to_json())
+    locs = geo_base.index.astype(str).tolist()
+
+    return gdf, geojson, locs, years
