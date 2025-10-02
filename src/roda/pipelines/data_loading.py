@@ -2,12 +2,12 @@ import geopandas as gpd
 
 from typing import Sequence
 
-from src.roda.fetch_data.ceps import load_ceps
-from src.roda.fetch_data.inep import fetch_schools
-from src.roda.fetch_data.cnes import fetch_healthcare
-from src.roda.fetch_data.rais import fetch_rais
-from src.roda.processing.geocoding import merge_by_cep
-from src.roda.utils.geo import geometry_from_wkt, to_local_utm
+from roda.fetch_data.ceps import load_ceps
+from roda.fetch_data.inep import fetch_schools
+from roda.fetch_data.cnes import fetch_healthcare
+from roda.fetch_data.rais import fetch_rais
+from roda.processing.geocoding import merge_by_cep
+from roda.utils.geo import geometry_from_wkt, to_local_utm
 
 
 # OLHAR COM MAIS CALMA
