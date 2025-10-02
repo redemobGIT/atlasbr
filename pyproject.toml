@@ -10,20 +10,35 @@ authors = [
 ]
 description = "Uma biblioteca Python para análises de mobilidade urbana."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11"  
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
 ]
 
+# --- Dependências Principais ---
 dependencies = [
+    # Core de Análise de Dados
     "pandas",
     "geopandas",
     "numpy",
     "scikit-learn",
     "scipy",
+    
+    # Visualização
     "matplotlib",
     "seaborn",
     "folium",
     "contextily",
+    "plotly",
+    "bokeh",
+    
+    # Ecossistema Geoespacial e de Mobilidade
     "geobr",
     "h3",
     "osmnx",
@@ -32,8 +47,16 @@ dependencies = [
     "tobler",
     "libpysal",
     "rtree",
+    "urbanaccess",
+    "peartree",
+    "mapclassify",
+    
+    # Coleta de Dados
     "basedosdados",
     "ipeadatapy",
+    "requests",
+    
+    # Utilitários e Ambiente de Notebook
     "jupyterlab",
     "notebook",
     "ipykernel",
@@ -41,6 +64,8 @@ dependencies = [
     "tqdm",
 ]
 
+# --- Dependências Opcionais ---
+# Ferramentas para desenvolvimento, testes e documentação
 [project.optional-dependencies]
 dev = [
     "pytest",
