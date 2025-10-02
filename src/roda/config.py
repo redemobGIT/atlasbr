@@ -1,3 +1,4 @@
+from logging import RootLogger
 import os
 import json
 from pathlib import Path
@@ -11,11 +12,10 @@ load_dotenv()
 # --- 1. Definição dos Caminhos Principais ---
 # Define os diretórios fundamentais do projeto de forma robusta e absoluta.
 PROJECT_DIR = Path(__file__).resolve().parent
-SRC_DIR = PROJECT_DIR / "src"
-OUTPUTS_DIR = PROJECT_DIR / "outputs"
+ROOT_DIR = PROJECT_DIR.parent.parent
+OUTPUTS_DIR = ROOT_DIR / "outputs"
 DATA_DIR = PROJECT_DIR / "data"
-ASSETS_DIR = SRC_DIR / "roda" / "assets"
-
+ASSETS_DIR = PROJECT_DIR / "assets"
 
 # --- 2. Parâmetros Globais e Segredos ---
 # Constantes e segredos que são compartilhados por todo o projeto.
