@@ -1,38 +1,17 @@
-*
+.env
+.venv
+.vscode
 
-!.gitignore
-!pyproject.toml
-!config.py
-!README.md
+outputs/
 
-!data
-!data/*
-!docs
-!notebooks
-!notebooks/rais.ipynb
-!notebooks/sdg.ipynb
-!outputs
+__pycache__/
+
+*.egg-info/
+
+.ipynb_checkpoints/
 
 
-!src
 
-!src/roda
-
-!src/roda/assets
-!src/roda/assets/*
-
-!src/roda/fetch_data
-!src/roda/fetch_data/*
-
-!src/roda/pipelines
-!src/roda/pipelines/data_loading.py
-
-!src/roda/processing
-!src/roda/processing/__init__.py
-!src/roda/processing/geocoding.py
-
-
-!src/roda/utils
-!src/roda/utils/*
-
-!src/roda/visualizations
+Mapeamento-Funções-Viz-Sociodemografia.png
+Mapeamento-Funções-Censo-Sociodemografia.png
+testes.py
