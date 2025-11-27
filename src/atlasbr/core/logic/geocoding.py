@@ -8,6 +8,19 @@ import pandas as pd
 import geopandas as gpd
 from shapely import wkt
 
+def points_from_coords(
+    df: pd.DataFrame, 
+    lat_col: str = "latitude", 
+    lon_col: str = "longitude",
+    crs: str = "EPSG:4326"
+) -> gpd.GeoDataFrame:
+    """Converts a DataFrame with lat/lon columns into a GeoDataFrame."""
+    return gpd.GeoDataFrame(
+        df,
+        geometry=gpd.points_from_xy(df[lon_col], df[lat_col]),
+        crs=crs
+    )
+
 def geocode_by_cep(
     data_df: pd.DataFrame,
     cep_df: pd.DataFrame,
@@ -17,31 +30,23 @@ def geocode_by_cep(
 ) -> gpd.GeoDataFrame:
     """
     Merges a dataset with a CEP reference table and converts to GeoDataFrame.
-    
-    Args:
-        data_df: The main data (e.g., RAIS jobs).
-        cep_df: The reference data (CEPs + WKT geometry).
-        data_cep_col: Column name in data_df containing CEPs.
-        cep_ref_col: Column name in cep_df containing CEPs.
-        geometry_col: Column name in cep_df containing WKT string.
-        
-    Returns:
-        gpd.GeoDataFrame: The input data with geometry attached. 
-                          Rows with invalid/missing CEPs will have empty geometry 
-                          or be dropped depending on join type (Left join used here).
     """
-    # 1. Ensure keys are strings and padded
+    # 1. Prepare Keys
     data_df = data_df.copy()
     data_df["_merge_key"] = data_df[data_cep_col].astype(str).str.zfill(8)
     
+    cep_ref = cep_df.copy()
+    cep_ref[cep_ref_col] = cep_ref[cep_ref_col].astype(str).str.zfill(8)
+
     # 2. Merge
-    # Left join: we keep RAIS jobs even if we can't find the CEP location
+    # Use suffixes to ensure we know which 'cep' is which if names collide
     merged = pd.merge(
         data_df,
-        cep_df[[cep_ref_col, geometry_col]],
+        cep_ref[[cep_ref_col, geometry_col]],
         left_on="_merge_key",
         right_on=cep_ref_col,
-        how="left"
+        how="left",
+        suffixes=("", "_ref") 
     )
     
     # 3. Parse Geometry (WKT -> Shapely)
@@ -55,21 +60,16 @@ def geocode_by_cep(
     # 4. Convert to GeoDataFrame
     gdf = gpd.GeoDataFrame(merged, geometry=geoms, crs="EPSG:4326")
     
-    # Clean up auxiliary columns
-    gdf = gdf.drop(columns=["_merge_key", cep_ref_col, geometry_col])
+    # 5. Clean up auxiliary columns safely
+    # If the ref column name collided, it might be named 'cep_ref' now due to suffixes logic above
+    cols_to_drop = ["_merge_key", geometry_col]
+    
+    # Check if the ref column name changed due to collision
+    if cep_ref_col in gdf.columns:
+        cols_to_drop.append(cep_ref_col)
+    elif f"{cep_ref_col}_ref" in gdf.columns:
+        cols_to_drop.append(f"{cep_ref_col}_ref")
+        
+    gdf = gdf.drop(columns=cols_to_drop, errors="ignore")
     
     return gdf
-
-
-def points_from_coords(
-    df: pd.DataFrame, 
-    lat_col: str = "latitude", 
-    lon_col: str = "longitude",
-    crs: str = "EPSG:4326"
-) -> gpd.GeoDataFrame:
-    """Converts a DataFrame with lat/lon columns into a GeoDataFrame."""
-    return gpd.GeoDataFrame(
-        df,
-        geometry=gpd.points_from_xy(df[lon_col], df[lat_col]),
-        crs=crs
-    )

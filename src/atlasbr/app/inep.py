@@ -5,8 +5,8 @@ import pandas as pd
 import geopandas as gpd
 from typing import List, Union
 
-from atlasbr.core.catalog.schools import get_schools_spec
-from atlasbr.infra.adapters import schools_bd
+from atlasbr.core.catalog.inep import get_schools_spec
+from atlasbr.infra.adapters import inep_bd
 from atlasbr.core.logic import geocoding
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import logger
@@ -29,7 +29,7 @@ def load_schools(
     spec = get_schools_spec(year)
     
     # 3. Fetch Data
-    df_schools = schools_bd.fetch_schools_from_bd(
+    df_schools = inep_bd.fetch_schools_from_bd(
         munis=muni_ids,
         year=year,
         billing_id=gcp_billing

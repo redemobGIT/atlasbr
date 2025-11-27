@@ -12,4 +12,4 @@ PlaceInput = Union[int, str, Tuple[str, str]]
 
 # Common Literals
 CensusTheme = Literal["basic", "income", "age", "race"]
-GeoGranularity = Literal["tract", "municipality", "hex"]
+GeoGranularity = Literal["tract", "municipality", "h3"]
