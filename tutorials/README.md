@@ -1,7 +1,3 @@
-This `README.md` is designed to live inside your `tutorials/` folder. It bridges the gap between "how do I run this?" and "why is it built this way?", serving as a high-level architectural guide for users and contributors.
-
------
-
 # AtlasBR Architecture & Design Guide
 
 Welcome to **AtlasBR**. This library is designed to make Brazilian socio-economic data accessible, reproducible, and easy to integrate into data science workflows.
