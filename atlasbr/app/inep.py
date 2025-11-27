@@ -1,34 +1,29 @@
 """
 AtlasBR - Application Layer for Schools.
 """
-
 import pandas as pd
 import geopandas as gpd
-from typing import List, Union, Tuple
+from typing import List, Union
 
 from atlasbr.core.catalog.schools import get_schools_spec
 from atlasbr.infra.adapters import schools_bd
 from atlasbr.core.logic import geocoding
-from atlasbr.geo import resolver
-
-PlaceInput = Union[int, str, Tuple[str, str]]
+from atlasbr.infra.geo import resolver
+from atlasbr.settings import logger
+from atlasbr.core.types import PlaceInput  # <--- Import shared type
 
 def load_schools(
     places: List[PlaceInput],
     *,
     year: int = 2023,
     gcp_billing: str,
-    as_gdf: bool = True,  # Default to True since schools usually imply location
+    as_gdf: bool = True,
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     """
     Loads School locations and metrics.
-    
-    Args:
-        as_gdf: If True, returns a GeoDataFrame (Points). If False, returns raw DataFrame with lat/lon cols.
     """
-    
     # 1. Resolve Inputs
-    muni_ids = resolver.resolve_places(places)
+    muni_ids = resolver.resolve_places_to_ids(places) # <--- Correct function name
     
     # 2. Get Spec
     spec = get_schools_spec(year)
@@ -42,14 +37,14 @@ def load_schools(
     
     # 4. Convert to GeoDataFrame
     if as_gdf:
-        print(f"    🌍 Converting {len(df_schools)} schools to geometry...")
+        logger.info(f"    🌍 Converting {len(df_schools)} schools to geometry...")
         gdf_schools = geocoding.points_from_coords(
             df_schools, 
             lat_col="latitude", 
             lon_col="longitude"
         )
-        print(f"✅ Loaded {len(gdf_schools)} schools.")
+        logger.info(f"✅ Loaded {len(gdf_schools)} schools.")
         return gdf_schools
     
-    print(f"✅ Loaded {len(df_schools)} schools (Tabular).")
+    logger.info(f"✅ Loaded {len(df_schools)} schools (Tabular).")
     return df_schools

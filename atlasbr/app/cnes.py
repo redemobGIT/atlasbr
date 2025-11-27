@@ -1,17 +1,16 @@
 """
 AtlasBR - Application Layer for CNES.
 """
-
 import pandas as pd
 import geopandas as gpd
-from typing import List, Union, Tuple, Optional
+from typing import List, Union
 
 from atlasbr.core.catalog.cnes import get_cnes_spec
 from atlasbr.infra.adapters import cnes_bd, ceps_bd
 from atlasbr.core.logic import geocoding
-from atlasbr.geo import resolver
-
-PlaceInput = Union[int, str, Tuple[str, str]]
+from atlasbr.infra.geo import resolver
+from atlasbr.settings import logger
+from atlasbr.core.types import PlaceInput
 
 def load_cnes(
     places: List[PlaceInput],
@@ -23,18 +22,14 @@ def load_cnes(
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     """
     Loads Healthcare establishments (CNES) with infrastructure metrics.
-    
-    Args:
-        geocode: If True, fetches CEP coordinates and returns a GeoDataFrame.
     """
-    
     # 1. Resolve Inputs
-    muni_ids = resolver.resolve_places(places)
+    muni_ids = resolver.resolve_places_to_ids(places)
     
     # 2. Get Spec
     spec = get_cnes_spec(year, month)
     
-    # 3. Fetch Data (Complex SQL Strategy)
+    # 3. Fetch Data
     df_cnes = cnes_bd.fetch_cnes_from_bd(
         munis=muni_ids,
         year=year,
@@ -49,14 +44,14 @@ def load_cnes(
             billing_id=gcp_billing
         )
         
-        print(f"    🌍 Geocoding {len(df_cnes)} healthcare units via CEP...")
+        logger.info(f"    🌍 Geocoding {len(df_cnes)} healthcare units via CEP...")
         gdf_cnes = geocoding.geocode_by_cep(
             data_df=df_cnes,
             cep_df=df_ceps,
             data_cep_col="cep"
         )
-        print(f"✅ Loaded {len(gdf_cnes)} CNES units (Geolocated).")
+        logger.info(f"✅ Loaded {len(gdf_cnes)} CNES units (Geolocated).")
         return gdf_cnes
     
-    print(f"✅ Loaded {len(df_cnes)} CNES units (Tabular).")
+    logger.info(f"✅ Loaded {len(df_cnes)} CNES units (Tabular).")
     return df_cnes

@@ -3,12 +3,11 @@ AtlasBR - Infrastructure Geo Adapter (Place Resolver).
 """
 import pandas as pd
 import geobr
-from typing import List, Union, Tuple, Set
+from typing import List, Set
 from functools import lru_cache
 from unidecode import unidecode
 from atlasbr.settings import logger
-
-PlaceInput = Union[int, str, Tuple[str, str]]
+from atlasbr.core.types import PlaceInput
 
 @lru_cache(maxsize=1)
 def _fetch_muni_metadata() -> pd.DataFrame:
