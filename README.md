@@ -1,7 +1,3 @@
-Here is the `README.md` for **AtlasBR**, matching the structure, tone, and layout of the Peabiru example.
-
------
-
 # AtlasBR — A Python Toolkit for Brazilian Spatial Data Pipelines
 
 <table>
