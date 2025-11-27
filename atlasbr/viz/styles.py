@@ -1,3 +1,6 @@
+"""
+AtlasBR - Visualization Styles & Theme Constants.
+"""
 from typing import Dict, Any
 
 SLIDER_STYLE = dict(
@@ -17,10 +20,9 @@ DROPDOWN_STYLE = dict(
 )
 COLORBAR_STYLE = dict(thickness=12, len=0.75)
 
-
 def build_coloraxis(spec: Dict[str, Any]) -> Dict:
     """Builds a coloraxis dictionary from a variable-year specification."""
-    title_suffix = " (log10)" if spec["log_color"] else ""
+    title_suffix = " (log10)" if spec.get("log_color") else ""
     colorbar = {**COLORBAR_STYLE, "title": spec["title"] + title_suffix}
 
     if spec["type"] == "discrete":
