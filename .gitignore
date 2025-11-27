@@ -1,17 +1,70 @@
+# --- Secrets & Environment ---
 .env
-.venv
-.vscode
+.env.*
+.venv/
+venv/
+env/
+ENV/
 
-outputs/
-
+# --- Python ---
 __pycache__/
-
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-.ipynb_checkpoints/
+# --- Project Specific (AtlasBR) ---
+# Do not commit the local data cache
+.atlasbr_cache/
 
+# Do not commit large analysis outputs or raw data
+outputs/
+data/
+*.parquet
+*.geoparquet
+*.csv
+*.zip
+*.shp
+*.shx
+*.dbf
+*.geojson
 
+# --- Unit Test / Coverage ---
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
 
-Mapeamento-Funções-Viz-Sociodemografia.png
-Mapeamento-Funções-Censo-Sociodemografia.png
-testes.py
+# --- IDEs ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db

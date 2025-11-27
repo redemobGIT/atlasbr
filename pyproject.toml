@@ -37,7 +37,9 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src"]  # Look in the root directory
+include = ["atlasbr*"]  # Include the atlasbr folder
+namespaces = false      # Usually false for flat layouts unless using implicit namespaces
 
 [tool.pytest.ini_options]
 minversion = "6.0"
