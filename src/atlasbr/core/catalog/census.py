@@ -8,7 +8,7 @@ This module defines the "Contract" for every Census theme:
 """
 
 from typing import Literal, List, Dict, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # --- Constants ---
 
@@ -30,17 +30,15 @@ URL_BASIC_2022 = (
     "Agregados_por_Setores_Censitarios/Agregados_por_Setor_csv/"
     "Agregados_por_setores_basico_BR_20250417.zip"
 )
-
 URL_INCOME_2022 = (
     "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/"
     "Agregados_por_Setores_Censitarios_Rendimento_do_Responsavel/"
     "Agregados_por_setores_renda_responsavel_BR_csv.zip"
 )
-
-URL_2022 = (
+URL_RACE_2022 = (
     "https://ftp.ibge.gov.br/Censos/Censo_Demografico_2022/"
     "Agregados_por_Setores_Censitarios/Agregados_por_Setor_csv/"
-    "Agregados_por_setores_demografia_BR.zip"
+    "Agregados_por_setores_cor_ou_raca_BR.zip"
 )
 
 
@@ -58,6 +56,8 @@ def _gen_cols(prefix: str, start: int, end: int, width: int = 3) -> List[str]:
 class CensusThemeSpec(BaseModel):
     """Defines how to fetch a specific Census theme."""
 
+    model_config = ConfigDict(frozen=True)
+
     theme: str
     year: int
     strategy: Literal["bd_table", "ftp_csv"]
@@ -72,9 +72,6 @@ class CensusThemeSpec(BaseModel):
     csv_encoding: str = "latin1"
     csv_decimal: str = "."
     column_map: Dict[str, str] = Field(default_factory=dict)
-
-    class Config:
-        frozen = True  # Immutable instances
 
 
 # --- The Catalog Registry ---
@@ -157,26 +154,6 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         required_columns=["pessoas", "V00644"] + _gen_cols("V", 645, 657, width=5),
     ),
     CensusThemeSpec(
-        theme="demo",
-        year=2022,
-        strategy="ftp_csv",
-        url=URL_2022,
-        column_map={
-            "CD_setor": "id_setor_censitario",
-            "V01031": "faixa_0a4_anos",
-            "V01032": "faixa_5a9_anos",
-            "V01033": "faixa_10a14_anos",
-            "V01034": "faixa_15a19_anos",
-            "V01035": "faixa_20a24_anos",
-            "V01036": "faixa_25a29_anos",
-            "V01037": "faixa_30a39_anos",
-            "V01038": "faixa_40a49_anos",
-            "V01039": "faixa_50a59_anos",
-            "V01040": "faixa_60a69_anos",
-            "V01041": "faixa_70_ou_mais",
-        },
-    ),
-    CensusThemeSpec(
         theme="race",
         year=2022,
         strategy="bd_table",
@@ -187,6 +164,20 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         + _gen_cols("V", 644, 657, width=5)
         + _gen_cols("V", 657, 717, width=5),
     ),
+    CensusThemeSpec(
+        theme="race",
+        year=2022,
+        strategy="ftp_csv",
+        url=URL_RACE_2022,
+        column_map={
+            "CD_SETOR": "id_setor_censitario",
+            "V01317": "cor_ou_raca_branca",
+            "V01318": "cor_ou_raca_preta",
+            "V01319": "cor_ou_raca_amarela",
+            "V01320": "cor_ou_raca_parda",
+            "V01321": "cor_ou_raca_indigena",
+        }
+    )
 ]
 
 # --- Accessor ---
