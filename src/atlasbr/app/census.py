@@ -1,9 +1,10 @@
 """
 AtlasBR - Application Layer for Census Data.
 
-Orchestrates fetching geometries, retrieving attributes (BD/FTP), 
+Orchestrates fetching geometries, retrieving attributes (BD/FTP),
 and performing spatial operations (Clipping, H3 Interpolation).
 """
+
 import pandas as pd
 import geopandas as gpd
 from typing import List, Literal, Optional
@@ -32,12 +33,14 @@ _TRANSFORM_REGISTRY = {
     ("basic", 2022): lambda df: df.rename(columns={"pessoas": "habitantes"}),
 }
 
+
 def load_census(
     places: List[PlaceInput],
     *,
     year: int = 2010,
     themes: List[CensusTheme] = ["basic", "income"],
     gcp_billing: Optional[str] = None,
+    strategy: str,
     clip_urban: bool = True,
     geometry: GeoGranularity = "tract",
     h3_res: int = 8,
@@ -62,20 +65,20 @@ def load_census(
 
     # 1. Resolve Inputs
     muni_ids = resolver.resolve_places_to_ids(places)
-    logger.info(f"🔄 Resolved {len(places)} inputs into {len(muni_ids)} unique municipalities.")
+    logger.info(
+        f"🔄 Resolved {len(places)} inputs into {len(muni_ids)} unique municipalities."
+    )
 
     # 2. Load & Prepare Geometry
     raw_tracts = infra_tracts.fetch_tracts_raw(muni_ids, year)
     gdf = geo_ops.prepare_tracts(raw_tracts)
-    
+
     # 3. Clip to Urban Footprint
     if clip_urban:
         logger.info(f"    ✂️  Clipping to Urban Area...")
         raw_urban = infra_urban.fetch_urban_area_raw_gdf(year)
         urban_mask = geo_ops.create_urban_mask(
-            raw_urban, 
-            bbox=gdf.total_bounds, 
-            target_crs=str(gdf.crs)
+            raw_urban, bbox=gdf.total_bounds, target_crs=str(gdf.crs)
         )
         gdf = geo_ops.clip_to_mask(gdf, urban_mask)
         logger.info(f"       -> Retained {len(gdf)} tracts after clip.")
@@ -83,9 +86,9 @@ def load_census(
     # 4. Iterate & Load Themes
     for theme in themes:
         logger.info(f"    📦 Loading theme: '{theme}'...")
-        
+
         try:
-            spec = get_theme_spec(theme, year)
+            spec = get_theme_spec(theme, year, strategy)
         except ValueError as e:
             logger.warning(f"        ⚠️ Warning: {e}. Skipping.")
             continue
@@ -96,7 +99,7 @@ def load_census(
                 spec.table_id, spec.required_columns, muni_ids, project_id
             )
         elif spec.strategy == "ftp_csv":
-            df_raw = census_ftp.fetch_income_ftp_2022(spec.url)
+            df_raw = census_ftp.fetch_census_ftp(spec)
         else:
             logger.warning(f"        ⚠️ Unknown strategy '{spec.strategy}'. Skipping.")
             continue
@@ -114,32 +117,38 @@ def load_census(
     # 5. H3 Aggregation (Optional)
     if geometry == "h3":
         logger.info(f"    ⬢  Aggregating to H3 Grid (Res {h3_res})...")
-        
+
         # A. Generate H3 Grid covering the current Tracts
         gdf_h3 = geo_spatial.h3fy(
             source=gdf,
             resolution=h3_res,
-            buffer=True, # Ensure edges are covered
-            clip=False   # Do not hard-clip hexes for interpolation accuracy
+            buffer=True,  # Ensure edges are covered
+            clip=False,  # Do not hard-clip hexes for interpolation accuracy
         )
-        
+
         # B. Define Variable Types for Areal Weighting
-        all_cols = [c for c in gdf.columns if c not in ["geometry", "id_setor_censitario"]]
+        all_cols = [
+            c for c in gdf.columns if c not in ["geometry", "id_setor_censitario"]
+        ]
         # Heuristic: Rates/Means are Intensive, Counts/Totals are Extensive
-        intensive = [c for c in all_cols if any(x in c for x in ["rendimento", "taxa", "mean", "rate"])]
+        intensive = [
+            c
+            for c in all_cols
+            if any(x in c for x in ["rendimento", "taxa", "mean", "rate"])
+        ]
         extensive = [c for c in all_cols if c not in intensive]
-        
+
         # C. Interpolate
         gdf = geo_spatial.interpolate_area_weighted(
             source_gdf=gdf,
             target_gdf=gdf_h3,
             extensive_vars=extensive,
-            intensive_vars=intensive
+            intensive_vars=intensive,
         )
         logger.info(f"       -> Interpolated data to {len(gdf)} hexagons.")
 
     # 6. Final Polish
     gdf["year"] = year
     logger.info(f"✅ Loaded Census {year} for {len(muni_ids)} municipalities.")
-    
+
     return gdf
