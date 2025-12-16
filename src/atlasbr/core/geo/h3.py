@@ -10,7 +10,7 @@ import geopandas as gpd
 import shapely
 from shapely.geometry import Polygon
 from packaging.version import Version
-from typing import List, Union, Tuple, Optional # <--- Added Tuple here
+from typing import List, Union, Tuple
 from warnings import warn
 
 # Optional Tobler import for robust areal interpolation
@@ -31,11 +31,15 @@ def circumradius(resolution: int) -> float:
         return h3.average_hexagon_edge_length(resolution, unit="m")
     return h3.edge_length(resolution, unit="m")
 
-def _swap_coords(coords: List[List[float]]) -> Tuple[float, float]:
-    """Swaps (Lon, Lat) to (Lat, Lon) for H3 compatibility."""
-    return tuple((p[1], p[0]) for p in coords)
+def _swap_coords(coords: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Swap (x, y) -> (y, x) for all coordinate pairs."""
+    return [(y, x) for (x, y) in coords]
 
-def _to_hex(source, resolution: int = 6, return_geoms: bool = True) -> Union[pd.Series, gpd.GeoDataFrame]:
+def _to_hex(
+    source, 
+    resolution: int = 6, 
+    return_geoms: bool = True
+) -> Union[pd.Series, gpd.GeoDataFrame]:
     """
     Internal helper: Generates hex grid for a single Polygon geometry.
     Handles compatibility between H3 v3 (polyfill) and v4 (polygon_to_cells).
@@ -43,21 +47,17 @@ def _to_hex(source, resolution: int = 6, return_geoms: bool = True) -> Union[pd.
     # 1. Generate Hex IDs
     try:
         # --- H3 v4 Logic (Requires H3Shape object) ---
-        if isinstance(source, Polygon):
-            # Shapely gives (Lon, Lat), H3 wants (Lat, Lon)
-            if hasattr(source.exterior, "coords"):
-                outer = _swap_coords(list(source.exterior.coords))
-                holes = [_swap_coords(list(h.coords)) for h in source.interiors]
-                
-                # Use the class available in H3 v4
-                poly_h3 = h3.LatLngPoly(outer, *holes)
-                hex_ids = h3.polygon_to_cells(poly_h3, resolution)
-            else:
-                # Fallback for unexpected geometry types
-                raise AttributeError("Geometry does not have coords")
+        if isinstance(source, Polygon) and hasattr(source.exterior, "coords"):
+            # Shapely gives (Lon, Lat), H3 v4 wants (Lat, Lon)
+            outer = _swap_coords(list(source.exterior.coords))
+            holes = [_swap_coords(list(h.coords)) for h in source.interiors]
+            
+            # Use the class available in H3 v4
+            poly_h3 = h3.LatLngPoly(outer, *holes)
+            hex_ids = h3.polygon_to_cells(poly_h3, resolution)
         else:
-             # Fallback logic if not a simple Polygon
-             raise AttributeError("Not a Polygon")
+            # Fallback for complex shapes if logic above fails
+            raise AttributeError("Not a simple Polygon")
 
     except (AttributeError, NameError, TypeError):
         # --- H3 v3 Logic (Accepts GeoJSON dict) ---
@@ -73,15 +73,20 @@ def _to_hex(source, resolution: int = 6, return_geoms: bool = True) -> Union[pd.
 
     # 2. Generate Geometries
     polys = []
-    # Detect available boundary function
-    to_boundary = getattr(h3, "cell_to_boundary", getattr(h3, "h3_to_geo_boundary", None))
     
-    if not to_boundary:
-        raise ImportError("Could not find H3 boundary function. Check 'h3' library installation.")
-
+    # Detect available boundary function
+    has_cell_to_boundary = hasattr(h3, "cell_to_boundary")
+    
     for hid in hex_ids:
-        # h3 returns (lat, lon), shapely needs (lon, lat)
-        boundary = to_boundary(hid, geo_json=True)
+        if has_cell_to_boundary:
+            # H3 v4: cell_to_boundary returns ((lat, lon), ...) tuple
+            # We must manually swap to (lon, lat) for Shapely
+            boundary_latlng = h3.cell_to_boundary(hid)
+            boundary = [(lng, lat) for (lat, lng) in boundary_latlng]
+        else:
+            # H3 v3: h3_to_geo_boundary(..., geo_json=True) returns (lon, lat)
+            boundary = h3.h3_to_geo_boundary(hid, geo_json=True)
+            
         polys.append(Polygon(boundary))
 
     return gpd.GeoDataFrame(
@@ -109,7 +114,11 @@ def h3fy(
     # 1. Project to Lat/Lon (EPSG:4326) required for H3
     if source.crs.is_geographic:
         if buffer:
-            # Estimate UTM to buffer in meters, then project back
+            warn(
+                "Source GeoDataFrame is in a geographic CRS. "
+                "Estimating UTM zone to perform metric buffering.",
+                stacklevel=2
+            )
             utm_crs = source.estimate_utm_crs()
             dist = circumradius(resolution)
             source = source.to_crs(utm_crs).buffer(dist).to_crs(4326)
@@ -118,8 +127,27 @@ def h3fy(
     else:
         # Source is projected
         if buffer:
+            # Check units to ensure metric buffering works
+            crs_info = source.crs.to_dict()
+            # crs.to_dict() might fail on some pyproj versions, but usually safe for standard CRS
+            # Alternatively use source.crs.axis_info[0].unit_name if available
+            # For robustness, we assume standard behavior or try/except
+            try:
+                crs_units = str(crs_info.get("units", "")).lower()
+            except AttributeError:
+                crs_units = "unknown"
+
+            if crs_units not in ("m", "metre", "meter", "us-ft", "ft-us"):
+                # If unknown, warn but proceed assuming meters (risky but pragmatic)
+                warn(f"Unknown CRS units '{crs_units}'. Assuming meters for buffering.")
+            
             dist = circumradius(resolution)
-            source = source.to_crs(4326) # Simplify: project first
+            if crs_units in ("us-ft", "ft-us"):
+                dist *= 3.281
+
+            # Buffer in projected CRS, then project to 4326
+            clipper = source.to_crs(4326) # Clip target is unbuffered
+            source = source.buffer(dist).to_crs(4326)
         else:
             source = source.to_crs(4326)
 
