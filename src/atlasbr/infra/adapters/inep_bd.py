@@ -3,8 +3,7 @@ AtlasBR - Infrastructure Adapter for Schools (Base dos Dados).
 """
 
 import pandas as pd
-import basedosdados as bd
-from typing import Iterable, List
+from typing import Iterable
 from atlasbr.settings import get_billing_id
 
 def fetch_schools_from_bd(
@@ -16,7 +15,15 @@ def fetch_schools_from_bd(
     Fetches school locations and metrics (enrollment, staff).
     Joins the 'Directory' table (coords) with 'Census' table (data).
     """
-    project_id = billing_id or settings.get_billing_id()
+    try:
+        import basedosdados as bd
+    except ImportError as e:
+        raise ImportError(
+            "Loading INEP (School) data requires the optional dependency 'basedosdados'. "
+            "Please install it via `pip install atlasbr[bd]`."
+        ) from e
+
+    project_id = billing_id or get_billing_id()
 
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
     

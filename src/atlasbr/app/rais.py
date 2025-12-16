@@ -7,14 +7,9 @@ from typing import List, Union, Optional
 
 from atlasbr.core.catalog.rais import get_rais_spec
 from atlasbr.core.logic import rais as logic, geocoding, integration
-from atlasbr.infra.adapters import rais_bd, ceps_bd
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import get_billing_id, logger
 from atlasbr.core.types import PlaceInput
-
-# Sub-apps (Note: Importing from 'inep' as per your file naming)
-from atlasbr.app.inep import load_schools
-from atlasbr.app.cnes import load_cnes
 
 def load_rais(
     places: List[PlaceInput],
@@ -27,17 +22,22 @@ def load_rais(
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     
     project_id = None
-    if strategy in {"bd_table"}:  # adapt to your actual strategy names
+    if strategy in {"bd_table"}:
         project_id = gcp_billing or get_billing_id()
 
     # 1. Resolve & Fetch RAIS
     muni_ids = resolver.resolve_places_to_ids(places)
     spec = get_rais_spec(year)
     
-    df_rais = rais_bd.fetch_rais_from_bd(
-        spec.table_id, spec.required_columns, muni_ids, year, project_id
-    )
-    
+    if spec.strategy == "bd_table":
+        from atlasbr.infra.adapters import rais_bd
+        df_rais = rais_bd.fetch_rais_from_bd(
+            spec.table_id, spec.required_columns, muni_ids, year, project_id
+        )
+    else:
+        # Fallback or error for unimplemented strategies
+        raise NotImplementedError(f"Strategy {strategy} not implemented for RAIS")
+
     # 2. Logic & Cleaning
     df_rais = logic.filter_invalid_legal_nature(df_rais)
     df_rais = logic.clip_outlier_jobs(df_rais)
@@ -45,6 +45,7 @@ def load_rais(
     # 3. Geocode RAIS (Stream 1)
     if geocode:
         logger.info(f"    🌍 Geocoding RAIS via CEP...")
+        from atlasbr.infra.adapters import ceps_bd
         df_ceps = ceps_bd.fetch_ceps_from_bd(muni_ids, project_id)
         main_dataset = geocoding.geocode_by_cep(df_rais, df_ceps, "cep")
         main_dataset = main_dataset.rename(columns={"id_estabelecimento": "id_estab_original"})
@@ -56,11 +57,15 @@ def load_rais(
     if include_public_sector:
         logger.info(f"    ➕ Injecting Public Sector (Schools & Health) for {year}...")
         
+        # Delayed import to avoid circular dependency and eager loading
+        from atlasbr.app.inep import load_schools
+        from atlasbr.app.cnes import load_cnes
+
         # A. Load Schools (Lat/Lon) - MATCH YEAR
         try:
             schools = load_schools(
                 places=muni_ids, # Pass IDs directly
-                year=year,       # <--- FIX: Use the requested year
+                year=year,       # Use the requested year
                 gcp_billing=project_id, 
                 as_gdf=geocode
             )
@@ -72,7 +77,7 @@ def load_rais(
         try:
             health = load_cnes(
                 places=muni_ids, 
-                year=year,       # <--- FIX: Use the requested year
+                year=year,       # Use the requested year
                 month=9,         # Keeping September fixed as requested
                 gcp_billing=project_id, 
                 geocode=geocode

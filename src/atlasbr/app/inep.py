@@ -6,11 +6,10 @@ import geopandas as gpd
 from typing import List, Union
 
 from atlasbr.core.catalog.inep import get_schools_spec
-from atlasbr.infra.adapters import inep_bd
 from atlasbr.core.logic import geocoding
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import logger
-from atlasbr.core.types import PlaceInput  # <--- Import shared type
+from atlasbr.core.types import PlaceInput
 
 def load_schools(
     places: List[PlaceInput],
@@ -23,12 +22,14 @@ def load_schools(
     Loads School locations and metrics.
     """
     # 1. Resolve Inputs
-    muni_ids = resolver.resolve_places_to_ids(places) # <--- Correct function name
+    muni_ids = resolver.resolve_places_to_ids(places)
     
     # 2. Get Spec
     spec = get_schools_spec(year)
     
     # 3. Fetch Data
+    # Local import to prevent eager loading of basedosdados
+    from atlasbr.infra.adapters import inep_bd
     df_schools = inep_bd.fetch_schools_from_bd(
         munis=muni_ids,
         year=year,

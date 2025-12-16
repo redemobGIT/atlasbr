@@ -6,7 +6,6 @@ import geopandas as gpd
 from typing import List, Union
 
 from atlasbr.core.catalog.cnes import get_cnes_spec
-from atlasbr.infra.adapters import cnes_bd, ceps_bd
 from atlasbr.core.logic import geocoding
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import logger
@@ -30,6 +29,8 @@ def load_cnes(
     spec = get_cnes_spec(year, month)
     
     # 3. Fetch Data
+    # Local import for lazy loading
+    from atlasbr.infra.adapters import cnes_bd
     df_cnes = cnes_bd.fetch_cnes_from_bd(
         munis=muni_ids,
         year=year,
@@ -39,6 +40,7 @@ def load_cnes(
     
     # 4. Optional: Geocoding
     if geocode:
+        from atlasbr.infra.adapters import ceps_bd
         df_ceps = ceps_bd.fetch_ceps_from_bd(
             munis=muni_ids,
             billing_id=gcp_billing

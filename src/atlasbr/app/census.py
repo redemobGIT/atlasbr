@@ -12,7 +12,6 @@ from typing import List, Literal, Optional
 # --- Internal Modules ---
 from atlasbr.core.catalog.census import get_theme_spec
 from atlasbr.core.logic import census as logic
-from atlasbr.infra.adapters import census_bd, census_ftp
 from atlasbr.infra.geo import tracts as infra_tracts
 from atlasbr.infra.geo import footprint as infra_urban
 from atlasbr.infra.geo import resolver
@@ -61,7 +60,7 @@ def load_census(
     """
     # 0. Configuration
     project_id = None
-    if strategy in {"bd_table"}:  # adapt to your actual strategy names
+    if strategy in {"bd_table"}:
         project_id = gcp_billing or get_billing_id()
 
     # 1. Resolve Inputs
@@ -96,10 +95,12 @@ def load_census(
 
         # Strategy Dispatch
         if spec.strategy == "bd_table":
+            from atlasbr.infra.adapters import census_bd
             df_raw = census_bd.fetch_from_bd(
                 spec.table_id, spec.required_columns, muni_ids, project_id
             )
         elif spec.strategy == "ftp_csv":
+            from atlasbr.infra.adapters import census_ftp
             df_raw = census_ftp.fetch_census_ftp(spec)
         else:
             logger.warning(f"        ⚠️ Unknown strategy '{spec.strategy}'. Skipping.")

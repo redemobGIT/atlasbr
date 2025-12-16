@@ -3,8 +3,7 @@ AtlasBR - Infrastructure Adapter for CNES (Base dos Dados).
 """
 
 import pandas as pd
-import basedosdados as bd
-from typing import Iterable, List
+from typing import Iterable
 from atlasbr.core.catalog.cnes import CNES_INFRASTRUCTURE_GROUPS, CNES_UNIT_CODES
 from atlasbr.settings import get_billing_id
 
@@ -27,7 +26,15 @@ def fetch_cnes_from_bd(
     Executes the complex CNES query including infrastructure aggregation
     and worker counting via BigQuery.
     """
-    project_id = billing_id or settings.get_billing_id()
+    try:
+        import basedosdados as bd
+    except ImportError as e:
+        raise ImportError(
+            "Loading CNES data requires the optional dependency 'basedosdados'. "
+            "Please install it via `pip install atlasbr[bd]`."
+        ) from e
+
+    project_id = billing_id or get_billing_id()
 
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
     
