@@ -11,11 +11,12 @@ from typing import List, Iterable
 
 from atlasbr import settings
 
+
 def fetch_from_bd(
     table_id: str,
     columns: List[str],
     munis: Iterable[int],
-    billing_id: str | None = None
+    billing_id: str | None = None,
 ) -> pd.DataFrame:
     """
     Fetches raw columns from a Base dos Dados table for specific municipalities.
@@ -34,7 +35,7 @@ def fetch_from_bd(
     # Defensive formatting: ensure munis are strings of length 7
     # (Handling potential int inputs safely)
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
-    
+
     # Construct the SELECT clause
     # We implicitly trust the 'columns' list from the Catalog.
     cols_sql = ", ".join(columns)
@@ -46,8 +47,8 @@ def fetch_from_bd(
     """
 
     print(f"    ☁️  Fetching {len(columns)} columns from {table_id}...")
-    
+
     df = bd.read_sql(query, billing_project_id=project_id)
-    
+
     # Standardize index immediately
     return df.set_index("id_setor_censitario")
