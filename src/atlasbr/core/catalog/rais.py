@@ -32,11 +32,6 @@ CNAE_SECTOR_NAMES: Dict[str, str] = {
     "U": "Organizações Internacionais",
 }
 
-CNAE_PROBLEM_PREFIXES: List[str] = [
-    '35', '36', '38', '41', '42', '43', '49', '51', '562', 
-    '64', '78', '80', '81', '82', '84',
-]
-
 # --- Domain Models ---
 
 class RaisThemeSpec(BaseModel):
@@ -48,6 +43,7 @@ class RaisThemeSpec(BaseModel):
     # For Base dos Dados
     table_id: Optional[str] = None
     required_columns: List[str] = Field(default_factory=list)
+
 
 # --- Registry ---
 
@@ -64,20 +60,20 @@ RAIS_CATALOG: List[RaisThemeSpec] = [
             "cep", 
             "natureza_juridica"
         ]
-    )
+    ),
+    # TODO: Future placeholder for FTP strategy
+    # RaisThemeSpec(year=2022, strategy="ftp_csv", ...)
 ]
 
-def get_rais_spec(year: int) -> RaisThemeSpec:
-    return RaisThemeSpec(
-        year=year,
-        strategy="bd_table",
-        table_id="basedosdados.br_me_rais.microdados_estabelecimentos",
-        required_columns=[
-            "id_municipio",
-            "tipo_estabelecimento", 
-            "cnae_2", 
-            "quantidade_vinculos_ativos", 
-            "cep", 
-            "natureza_juridica"
-        ]
+def get_rais_spec(year: int, strategy: str) -> RaisThemeSpec:
+    """
+    Retrieves the RAIS configuration for a specific year and strategy.
+    """
+    for spec in RAIS_CATALOG:
+        if spec.year == year and spec.strategy == strategy:
+            return spec
+            
+    raise ValueError(
+        f"No RAIS configuration found for year={year}, strategy='{strategy}'. "
+        "Check available years or strategies in the catalog."
     )

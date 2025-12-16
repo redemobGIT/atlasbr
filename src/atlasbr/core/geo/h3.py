@@ -9,7 +9,7 @@ import geopandas as gpd
 import shapely
 from shapely.geometry import Polygon
 from packaging.version import Version
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, Any
 from warnings import warn
 
 from atlasbr.settings import logger
@@ -17,7 +17,7 @@ from atlasbr.settings import logger
 # Check GeoPandas version for union operations
 GPD_10 = Version(gpd.__version__) >= Version("1.0.0dev")
 
-def _require_h3():
+def _require_h3() -> Any:
     """Lazy loader for H3."""
     try:
         import h3
@@ -28,7 +28,7 @@ def _require_h3():
             "Please install it via `pip install atlasbr[geo]`."
         )
 
-def _require_tobler():
+def _require_tobler() -> Any:
     """Lazy loader for Tobler."""
     try:
         from tobler.area_weighted import area_interpolate
@@ -41,7 +41,12 @@ def _require_tobler():
 
 def circumradius(resolution: int) -> float:
     """
-    Calculates the circumradius of an H3 hexagon at a given resolution (in meters).
+    Calculates the circumradius (center-to-vertex distance) of an H3 hexagon 
+    at a given resolution (in meters).
+    
+    Note: For a regular hexagon, the circumradius is equal to the edge length.
+    H3 hexagons are not perfectly regular, but edge length is the standard proxy
+    for coverage buffering calculations.
     """
     h3 = _require_h3()
     if Version(h3.__version__) >= Version("4.0.0"):
@@ -75,6 +80,7 @@ def _to_hex(
             poly_h3 = h3.LatLngPoly(outer, *holes)
             hex_ids = h3.polygon_to_cells(poly_h3, resolution)
         else:
+            # Fallback for complex shapes if logic above fails
             raise AttributeError("Not a simple Polygon")
 
     except (AttributeError, NameError, TypeError):
@@ -91,15 +97,18 @@ def _to_hex(
 
     # 2. Generate Geometries
     polys = []
+    
+    # Detect available boundary function
     has_cell_to_boundary = hasattr(h3, "cell_to_boundary")
     
     for hid in hex_ids:
         if has_cell_to_boundary:
             # H3 v4: cell_to_boundary returns ((lat, lon), ...) tuple
+            # We must manually swap to (lon, lat) for Shapely
             boundary_latlng = h3.cell_to_boundary(hid)
             boundary = [(lng, lat) for (lat, lng) in boundary_latlng]
         else:
-            # H3 v3: h3_to_geo_boundary returns (lon, lat)
+            # H3 v3: h3_to_geo_boundary(..., geo_json=True) returns (lon, lat)
             boundary = h3.h3_to_geo_boundary(hid, geo_json=True)
             
         polys.append(Polygon(boundary))
@@ -124,7 +133,6 @@ def h3fy(
         raise ValueError("Source GeoDataFrame must have a valid CRS.")
 
     # Only load H3 if we actually need to calculate it
-    # (Though logic below needs it immediately)
     _require_h3()
 
     orig_crs = source.crs
@@ -146,10 +154,11 @@ def h3fy(
     else:
         # Source is projected
         if buffer:
-            # Check units
+            # Check units to ensure metric buffering works
             crs_info = source.crs.to_dict() if hasattr(source.crs, "to_dict") else {}
             try:
                 crs_units = str(crs_info.get("units", "")).lower()
+                # If units missing (e.g. from EPSG code lookup), try axis info
                 if not crs_units and hasattr(source.crs, "axis_info"):
                      crs_units = source.crs.axis_info[0].unit_name.lower()
             except (AttributeError, IndexError):
@@ -162,27 +171,29 @@ def h3fy(
             if crs_units in ("us-ft", "ft-us"):
                 dist *= 3.281
 
+            # Buffer in projected CRS, then project to 4326
             source = source.buffer(dist).to_crs(4326)
         else:
             source = source.to_crs(4326)
 
-    # 2. Merge geometries
+    # 2. Merge geometries into a single footprint
     if GPD_10:
         source_unary = shapely.force_2d(source.union_all())
     else:
         source_unary = shapely.force_2d(source.unary_union)
 
-    # 3. Fill with Hexagons
+    # 3. Fill footprint with Hexagons
     if isinstance(source_unary, Polygon):
         hexagons = _to_hex(source_unary, resolution, return_geoms)
     else:
+        # Handle MultiPolygon by iterating parts
         output = []
         for geom in source_unary.geoms:
             hexes = _to_hex(geom, resolution, return_geoms)
             output.append(hexes)
         hexagons = pd.concat(output)
 
-    # 4. Post-processing
+    # 4. Post-processing (Clip & Reproject)
     if return_geoms and clip:
         clipper_4326 = clipper.to_crs(4326)
         hexagons = gpd.clip(hexagons, clipper_4326)
@@ -200,13 +211,22 @@ def interpolate_area_weighted(
     preserve_totals: bool = True
 ) -> gpd.GeoDataFrame:
     """
-    Transfers attributes from Source to Target using areal weighting.
+    Transfers attributes from Source (Tracts) to Target (H3) using areal weighting.
+    Wrapper around `tobler.area_weighted.area_interpolate`.
+
+    Args:
+        source_gdf: Source geometries (e.g. Tracts).
+        target_gdf: Target geometries (e.g. Hexagons).
+        extensive_vars: Variables to sum (e.g. population, households).
+        intensive_vars: Variables to average (e.g. income, density).
+        preserve_totals: If True, ensures the sum of extensive vars is preserved (allocate_total=True).
     """
     area_interpolate = _require_tobler()
 
     if extensive_vars is None: extensive_vars = []
     if intensive_vars is None: intensive_vars = []
         
+    # Ensure CRS match for accurate area calculation
     if not source_gdf.crs.equals(target_gdf.crs):
         logger.info("    ⚠️ Reprojecting source to match target CRS for interpolation...")
         source_gdf = source_gdf.to_crs(target_gdf.crs)

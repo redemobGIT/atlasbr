@@ -1,13 +1,15 @@
 """
-AtlasBR - Application Layer for RAIS (Hybrid Pipeline).
+AtlasBR - Application Layer for RAIS (Employment) Data.
+
+Handles the 'Hybrid Pipeline' which can inject public sector jobs 
+(from Schools/Hospitals) into the main RAIS dataset.
 """
 import pandas as pd
 import geopandas as gpd
-import numpy as np
 from typing import List, Union, Optional
 
 from atlasbr.core.catalog.rais import get_rais_spec
-from atlasbr.core.logic import rais as logic, geocoding, integration
+from atlasbr.core.logic import geocoding, integration
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import logger, resolve_billing_id
 from atlasbr.core.types import PlaceInput
@@ -15,76 +17,78 @@ from atlasbr.core.types import PlaceInput
 def load_rais(
     places: List[PlaceInput],
     *,
-    year: int = 2022,
+    year: int = 2021,
+    strategy: str = "bd_table",
     gcp_billing: Optional[str] = None,
-    strategy: str,
     geocode: bool = False,
     include_public_sector: bool = False,
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
-    
-    # 1. Configuration
-    project_id = resolve_billing_id(gcp_billing)
+    """
+    Loads RAIS Establishment data, optionally enriching it with Public Sector data.
 
-    # 2. Resolve & Fetch RAIS
+    Args:
+        places: List of municipalities.
+        year: Year of the dataset.
+        strategy: 'bd_table' (BigQuery) or 'ftp_csv' (not yet implemented).
+        gcp_billing: Google Cloud Project ID.
+        geocode: If True, attaches coordinates based on CEP.
+        include_public_sector: If True, fetches Schools (INEP) and Health Units (CNES)
+                               and merges them to fill gaps in RAIS public administration coverage.
+    """
+    # 1. Configuration
+    project_id = resolve_billing_id(gcp_billing) if strategy == "bd_table" else None
+
+    # 2. Resolve Inputs
     muni_ids = resolver.resolve_places_to_ids(places)
-    spec = get_rais_spec(year)
     
+    # 3. Get Spec (Strict Dispatch)
+    # Raises ValueError if the strategy/year combination is invalid
+    spec = get_rais_spec(year, strategy)
+    
+    # 4. Fetch Main Data (RAIS)
     if spec.strategy == "bd_table":
         from atlasbr.infra.adapters import rais_bd
-        df_rais = rais_bd.fetch_rais_from_bd(
-            spec.table_id, spec.required_columns, muni_ids, year, project_id
+        
+        logger.info(f"    🏭 Loading RAIS {year} via strategy '{strategy}'...")
+        main_dataset = rais_bd.fetch_rais_from_bd(
+            table_id=spec.table_id,
+            columns=spec.required_columns,
+            munis=muni_ids,
+            year=year,
+            billing_id=project_id
         )
     else:
-        raise NotImplementedError(f"Strategy {strategy} not implemented for RAIS")
+        raise NotImplementedError(
+            f"Strategy '{strategy}' is defined in catalog but not implemented in loader."
+        )
 
-    # 3. Canonical Identity & Cleaning
-    # RAIS rows are unique establishments, but lack a public ID column.
-    # We create a stable surrogate key for internal tracking.
-    df_rais["id_estab_original"] = (
-        f"RAIS_{year}_" + df_rais.reset_index().index.astype(str)
-    )
-    
-    df_rais = logic.filter_invalid_legal_nature(df_rais)
-    df_rais = logic.clip_outlier_jobs(df_rais)
-    
-    # 4. Geocode RAIS (Stream 1)
-    if geocode:
-        logger.info(f"    🌍 Geocoding RAIS via CEP...")
-        from atlasbr.infra.adapters import ceps_bd
-        df_ceps = ceps_bd.fetch_ceps_from_bd(muni_ids, project_id)
-        
-        # Merge geometries onto the main dataset
-        main_dataset = geocoding.geocode_by_cep(df_rais, df_ceps, "cep")
-    else:
-        main_dataset = df_rais
-
-    # 5. Inject Public Sector (Stream 2 & 3)
+    # 5. Optional: Hybrid Public Sector Injection
     if include_public_sector:
-        logger.info(f"    ➕ Injecting Public Sector (Schools & Health) for {year}...")
+        logger.info("    🧩 Injecting Public Sector data (Schools + Health)...")
         
-        from atlasbr.app.inep import load_schools
-        from atlasbr.app.cnes import load_cnes
-
-        # A. Load Schools (Lat/Lon)
+        # A. Fetch Schools (INEP)
         try:
+            from atlasbr.app.inep import load_schools
             schools = load_schools(
-                places=muni_ids,
-                year=year,
-                gcp_billing=project_id, 
-                as_gdf=geocode
+                places=places,
+                year=year, # Assuming matching year exists
+                gcp_billing=project_id,
+                as_gdf=False
             )
         except Exception as e:
             logger.warning(f"Failed to load Schools for {year}: {e}. Skipping injection.")
             schools = pd.DataFrame()
 
-        # B. Load CNES (CEP)
+        # B. Fetch Health (CNES)
         try:
+            from atlasbr.app.cnes import load_cnes
+            # CNES is monthly; we typically use September (09) as the reference
             health = load_cnes(
-                places=muni_ids, 
+                places=places,
                 year=year,
                 month=9,
                 gcp_billing=project_id, 
-                geocode=geocode
+                geocode=False
             )
         except Exception as e:
             logger.warning(f"Failed to load CNES for {year}: {e}. Skipping injection.")
@@ -109,11 +113,27 @@ def load_rais(
         
         if len(to_merge) > 1:
             main_dataset = pd.concat(to_merge, ignore_index=True)
-            logger.info(f"       -> Integrated {len(schools_h)} schools and {len(health_h)} health units.")
+            logger.info(
+                f"       -> Integrated {len(schools_h)} schools and {len(health_h)} health units."
+            )
 
-    # 6. Enrich Metadata
-    main_dataset = logic.enrich_cnae_metadata(main_dataset, cnae_col="cnae_2")
+    # 6. Optional: Geocoding
+    if geocode:
+        from atlasbr.infra.adapters import ceps_bd
+        
+        df_ceps = ceps_bd.fetch_ceps_from_bd(
+            munis=muni_ids,
+            billing_id=resolve_billing_id(gcp_billing)
+        )
+        
+        logger.info(f"    🌍 Geocoding {len(main_dataset)} establishments via CEP...")
+        gdf_rais = geocoding.geocode_by_cep(
+            data_df=main_dataset,
+            cep_df=df_ceps,
+            data_cep_col="cep"
+        )
+        logger.info(f"✅ Loaded {len(gdf_rais)} establishments (Geolocated).")
+        return gdf_rais
     
-    logger.info(f"✅ Loaded {len(main_dataset)} total establishments.")
-    
+    logger.info(f"✅ Loaded {len(main_dataset)} establishments (Tabular).")
     return main_dataset
