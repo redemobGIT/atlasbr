@@ -2,70 +2,77 @@
 AtlasBR - Infrastructure Adapter for IBGE FTP.
 
 This module handles downloading, unzipping, and parsing raw CSV files from IBGE's FTP servers.
-Currently specialized for the 2022 Income dataset structure.
+It utilizes a local disk cache to prevent redundant downloads.
 """
 
-import requests
 import zipfile
 import pandas as pd
 import numpy as np
 from io import BytesIO
 from functools import lru_cache
+from pathlib import Path
 
 from atlasbr.core.catalog.census import CensusThemeSpec
+from atlasbr.settings import logger
+from atlasbr.infra.storage.cache import cached_download, url_to_filename
+
+
+@lru_cache(maxsize=8)
+def _download_zip_ftp(url: str) -> BytesIO:
+    """
+    Downloads a ZIP file from a URL to the local cache and returns it as a BytesIO object.
+    
+    The file is stored in <cache_dir>/ibge/census/<hash>.zip.
+    """
+    rel_path = Path("ibge") / "census" / url_to_filename(url, suffix=".zip")
+    
+    # Leverages the new disk cache utility
+    zip_path = cached_download(url, relpath=rel_path, timeout=180)
+    
+    return BytesIO(zip_path.read_bytes())
 
 
 @lru_cache(maxsize=1)
 def fetch_income_ftp_2022(url: str) -> pd.DataFrame:
     """
     Downloads and parses the 2022 Income aggregates from IBGE.
-
-    This function:
-    1. Downloads the ZIP file into memory.
-    2. Finds the .csv inside.
-    3. Parses it with latin1 encoding.
-    4. Cleans numeric columns (converting ',' to '.').
-
+    
     Args:
         url: Direct URL to the .zip file.
 
     Returns:
         pd.DataFrame: DataFrame with 'rendimento_medio', indexed by 'id_setor_censitario'.
     """
-    print(f"    ⬇️  Downloading Income 2022 from FTP...")
+    logger.info(f"    ⬇️  Fetching Income 2022 from FTP (cached)...")
 
+    # Use the shared cached downloader
     try:
-        response = requests.get(url, timeout=120)  # Increased timeout for large files
-        response.raise_for_status()
-    except requests.RequestException as e:
-        raise RuntimeError(f"Failed to download Census data from {url}") from e
+        zip_bytes = _download_zip_ftp(url)
+    except Exception as e:
+         raise RuntimeError(f"Failed to retrieve Income data from {url}") from e
 
-    with zipfile.ZipFile(BytesIO(response.content)) as zf:
+    with zipfile.ZipFile(zip_bytes) as zf:
         # Find the first CSV in the archive
         try:
             csv_filename = next(p for p in zf.namelist() if p.lower().endswith(".csv"))
         except StopIteration:
             raise FileNotFoundError("No CSV file found inside the IBGE ZIP archive.")
 
-        # Read the specific columns we care about to save memory
-        # CD_SETOR = Sector ID
-        # V06004 = Average Income (Rendimento médio mensal do responsável)
+        # Read specific columns
         df = pd.read_csv(
             zf.open(csv_filename),
             sep=";",
             encoding="latin1",
             usecols=["CD_SETOR", "V06004"],
-            dtype={"CD_SETOR": str},  # Ensure ID is read as string
+            dtype={"CD_SETOR": str},
         )
 
     # Clean and Standardize
-    # 1. Rename columns to match our internal catalog expectations somewhat
-    #    (though mapping usually happens in logic, here we do structural cleanup)
     df = df.rename(
         columns={"CD_SETOR": "id_setor_censitario", "V06004": "rendimento_medio"}
     )
 
-    # 2. Fix formatting (IBGE uses 'X' for nulls and ',' for decimals)
+    # Fix formatting (IBGE uses 'X' for nulls and ',' for decimals)
     df["rendimento_medio"] = (
         df["rendimento_medio"]
         .astype(str)
@@ -73,24 +80,17 @@ def fetch_income_ftp_2022(url: str) -> pd.DataFrame:
         .replace({"X": np.nan, ".": np.nan, "nan": np.nan})
     )
 
-    # 3. Convert to float
     df["rendimento_medio"] = pd.to_numeric(df["rendimento_medio"], errors="coerce")
-
-    # 4. Ensure ID padding (IBGE sometimes drops leading zeros in CSVs)
     df["id_setor_censitario"] = df["id_setor_censitario"].str.zfill(15)
 
     return df.set_index("id_setor_censitario")
 
 
 def fetch_census_ftp(spec: CensusThemeSpec) -> pd.DataFrame:
-    def _download_zip_ftp(url: str) -> BytesIO:
-        try:
-            response = requests.get(url, timeout=120)
-            response.raise_for_status()
-            return BytesIO(response.content)
-        except requests.RequestException as e:
-            raise RuntimeError(f"Failed to download Census data from {url}") from e
-
+    """
+    Generic fetcher for Census data based on a Theme Spec.
+    """
+    
     def _extract_and_clean(zip_bytes: BytesIO, spec: CensusThemeSpec) -> pd.DataFrame:
         with zipfile.ZipFile(zip_bytes) as zf:
             try:
@@ -126,6 +126,11 @@ def fetch_census_ftp(spec: CensusThemeSpec) -> pd.DataFrame:
 
         return df
 
-    print(f"    ⬇️  Downloading {spec.theme} {spec.year} from FTP...")
-    zip_bytes = _download_zip_ftp(spec.url)
+    logger.info(f"    ⬇️  Fetching {spec.theme} {spec.year} from IBGE FTP (cached)...")
+    
+    try:
+        zip_bytes = _download_zip_ftp(spec.url)
+    except Exception as e:
+        raise RuntimeError(f"Failed to retrieve {spec.theme} data from {spec.url}") from e
+        
     return _extract_and_clean(zip_bytes, spec)

@@ -17,7 +17,7 @@ from atlasbr.infra.geo import footprint as infra_urban
 from atlasbr.infra.geo import resolver
 from atlasbr.core.geo import ops as geo_ops
 from atlasbr.core.geo import h3 as geo_spatial
-from atlasbr.settings import get_billing_id, logger
+from atlasbr.settings import logger, resolve_billing_id
 from atlasbr.core.types import PlaceInput, CensusTheme, GeoGranularity
 
 # --- Dispatch Registry ---
@@ -58,11 +58,6 @@ def load_census(
     Returns:
         gpd.GeoDataFrame: Indexed by 'id_setor_censitario' or 'h3_index'.
     """
-    # 0. Configuration
-    project_id = None
-    if strategy in {"bd_table"}:
-        project_id = gcp_billing or get_billing_id()
-
     # 1. Resolve Inputs
     muni_ids = resolver.resolve_places_to_ids(places)
     logger.info(
@@ -96,6 +91,8 @@ def load_census(
         # Strategy Dispatch
         if spec.strategy == "bd_table":
             from atlasbr.infra.adapters import census_bd
+            # Only resolve billing if we are actually using BigQuery
+            project_id = resolve_billing_id(gcp_billing)
             df_raw = census_bd.fetch_from_bd(
                 spec.table_id, spec.required_columns, muni_ids, project_id
             )

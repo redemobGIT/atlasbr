@@ -8,7 +8,7 @@ from typing import List, Union, Optional
 from atlasbr.core.catalog.rais import get_rais_spec
 from atlasbr.core.logic import rais as logic, geocoding, integration
 from atlasbr.infra.geo import resolver
-from atlasbr.settings import get_billing_id, logger
+from atlasbr.settings import logger, resolve_billing_id
 from atlasbr.core.types import PlaceInput
 
 def load_rais(
@@ -21,11 +21,11 @@ def load_rais(
     include_public_sector: bool = False,
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     
-    project_id = None
-    if strategy in {"bd_table"}:
-        project_id = gcp_billing or get_billing_id()
+    # 1. Configuration
+    # Standardize billing resolution for all downstream calls (RAIS, CEPs, Inep, CNES)
+    project_id = resolve_billing_id(gcp_billing)
 
-    # 1. Resolve & Fetch RAIS
+    # 2. Resolve & Fetch RAIS
     muni_ids = resolver.resolve_places_to_ids(places)
     spec = get_rais_spec(year)
     
@@ -38,11 +38,11 @@ def load_rais(
         # Fallback or error for unimplemented strategies
         raise NotImplementedError(f"Strategy {strategy} not implemented for RAIS")
 
-    # 2. Logic & Cleaning
+    # 3. Logic & Cleaning
     df_rais = logic.filter_invalid_legal_nature(df_rais)
     df_rais = logic.clip_outlier_jobs(df_rais)
     
-    # 3. Geocode RAIS (Stream 1)
+    # 4. Geocode RAIS (Stream 1)
     if geocode:
         logger.info(f"    🌍 Geocoding RAIS via CEP...")
         from atlasbr.infra.adapters import ceps_bd
@@ -53,7 +53,7 @@ def load_rais(
         main_dataset = df_rais
         main_dataset["id_estab_original"] = None
 
-    # 4. Inject Public Sector (Stream 2 & 3)
+    # 5. Inject Public Sector (Stream 2 & 3)
     if include_public_sector:
         logger.info(f"    ➕ Injecting Public Sector (Schools & Health) for {year}...")
         
@@ -74,6 +74,7 @@ def load_rais(
             schools = pd.DataFrame()
 
         # B. Load CNES (CEP) - MATCH YEAR, Keep Month=9
+        # TODO: consider making month configurable or use a different one
         try:
             health = load_cnes(
                 places=muni_ids, 
@@ -100,7 +101,7 @@ def load_rais(
         
         logger.info(f"       -> Integrated {len(schools_h)} schools and {len(health_h)} health units.")
 
-    # 5. Enrich Metadata
+    # 6. Enrich Metadata
     main_dataset = logic.enrich_cnae_metadata(main_dataset, cnae_col="cnae_2")
     
     logger.info(f"✅ Loaded {len(main_dataset)} total establishments.")

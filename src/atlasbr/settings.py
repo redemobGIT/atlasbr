@@ -10,14 +10,24 @@ from typing import Optional
 logger = logging.getLogger("atlasbr")
 logger.addHandler(logging.NullHandler()) # Default to silence unless configured
 
+# Environment Variable Names
+# TODO: Consider the need for this in the future
+ENV_BILLING_ID = "ATLASBR_BILLING_ID"
+ENV_CACHE_DIR = "ATLASBR_CACHE_DIR"
+
 class Settings:
     _instance = None
     
     def __init__(self):
-        self.gcp_billing_id: Optional[str] = os.getenv("GCLOUD_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+        # Priority: Env ATLASBR_BILLING_ID -> Env GOOGLE_CLOUD_PROJECT -> None
+        self.gcp_billing_id: Optional[str] = (
+            os.getenv(ENV_BILLING_ID) or 
+            os.getenv("GCLOUD_PROJECT_ID") or 
+            os.getenv("GOOGLE_CLOUD_PROJECT")
+        )
         
         # Default cache location
-        env_cache = os.getenv("ATLASBR_CACHE_DIR")
+        env_cache = os.getenv(ENV_CACHE_DIR)
         if env_cache:
             self.cache_dir = Path(env_cache)
         else:
@@ -35,7 +45,8 @@ class Settings:
         if inst.gcp_billing_id is None:
             raise ValueError(
                 "GCP Billing ID not set. "
-                "Set 'GCLOUD_PROJECT_ID' env var or call 'atlasbr.set_billing_id()'."
+                "Set 'ATLASBR_BILLING_ID' or 'GOOGLE_CLOUD_PROJECT' env var, "
+                "or call 'atlasbr.set_billing_id()'."
             )
         return inst.gcp_billing_id
 
@@ -57,6 +68,10 @@ def get_billing_id() -> str:
     """Retrieves the current billing ID."""
     return Settings.get_billing_id()
 
+def resolve_billing_id(billing_id: str | None) -> str:
+    """Return an explicit billing_id or fall back to Settings/env."""
+    return billing_id or get_billing_id()
+
 def set_billing_id(project_id: str):
     """Sets the Google Cloud Project ID for all subsequent calls."""
     Settings.set_billing_id(project_id)
@@ -66,9 +81,14 @@ def get_cache_dir() -> Path:
     return Settings.get_cache_dir()
 
 def configure_logging(level: int = logging.INFO):
-    """Helper to enable console logging for the library."""
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    """Enable console logging for the library (idempotent)."""
+    # Check if a StreamHandler is already attached to avoid duplicates
+    has_stream = any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+    
+    if not has_stream:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        
     logger.setLevel(level)
