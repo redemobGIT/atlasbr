@@ -5,11 +5,10 @@ Defines the contract for fetching RAIS data and the taxonomies for CNAE codes.
 """
 
 from typing import Literal, List, Tuple, Dict, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # --- CNAE Constants ---
 
-# Official mapping: (Section Letter, Start Division, End Division)
 CNAE_SECTIONS_DEF: List[Tuple[str, int, int]] = [
     ("A", 1, 3), ("B", 5, 9), ("C", 10, 33), ("D", 35, 35),
     ("E", 36, 39), ("F", 41, 43), ("G", 45, 47), ("H", 49, 53),
@@ -33,7 +32,6 @@ CNAE_SECTOR_NAMES: Dict[str, str] = {
     "U": "Organizações Internacionais",
 }
 
-# Prefixes for jobs that are likely headquarter-assigned rather than local
 CNAE_PROBLEM_PREFIXES: List[str] = [
     '35', '36', '38', '41', '42', '43', '49', '51', '562', 
     '64', '78', '80', '81', '82', '84',
@@ -42,15 +40,14 @@ CNAE_PROBLEM_PREFIXES: List[str] = [
 # --- Domain Models ---
 
 class RaisThemeSpec(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     year: int
     strategy: Literal["bd_table", "ftp_csv"]
     
     # For Base dos Dados
     table_id: Optional[str] = None
     required_columns: List[str] = Field(default_factory=list)
-
-    class Config:
-        frozen = True
 
 # --- Registry ---
 

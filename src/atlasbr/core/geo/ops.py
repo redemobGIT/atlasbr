@@ -3,7 +3,7 @@ AtlasBR - Core Geo Operations (Clipping & Masking).
 """
 import geopandas as gpd
 import pandas as pd
-from typing import Tuple, Union
+from typing import Tuple, Union, Any
 from atlasbr.core.geo.utils import to_local_utm, clean_geometries
 from atlasbr.settings import logger
 
@@ -39,13 +39,12 @@ def prepare_tracts(raw_tracts: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def create_urban_mask(
     urban_gdf: gpd.GeoDataFrame,
     bbox: Tuple[float, float, float, float],
-    target_crs: Union[str, gpd.tools.osr.SpatialReference]
+    target_crs: Any  # Changed from Union[str, gpd.tools.osr...] to Any
 ) -> gpd.GeoDataFrame:
     """
     Creates a single dissolved polygon mask from the raw national urban file.
     """
     # 1. Project to target CRS (usually UTM) if needed
-    # Using .crs.equals is safer than string comparison
     if not urban_gdf.crs.equals(target_crs):
         urban_gdf = urban_gdf.to_crs(target_crs)
 
@@ -58,11 +57,8 @@ def create_urban_mask(
         return gpd.GeoDataFrame({"geometry": []}, crs=target_crs)
 
     # 3. Dissolve and Buffer
-    # buffer(500) adds a 500m margin to include peri-urban areas
-    # unary_union is generally faster for dissolving all into one
     union_geom = urban_slice.unary_union
     
-    # Validating if union_geom is valid before buffering
     if union_geom.is_empty:
          return gpd.GeoDataFrame({"geometry": []}, crs=target_crs)
 
@@ -73,15 +69,11 @@ def create_urban_mask(
 def clip_to_mask(gdf: gpd.GeoDataFrame, mask: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
     Clips the input GDF to the mask polygon.
-    Uses gpd.clip which is generally faster and preserves index better than overlay.
     """
     if mask.empty:
-        return gdf.iloc[0:0] # Return empty schema-compliant gdf
+        return gdf.iloc[0:0] 
 
-    # Ensure CRS match
     if not mask.crs.equals(gdf.crs):
         mask = mask.to_crs(gdf.crs)
 
-    # gpd.clip automatically handles index preservation
-    # keep_geom_type=True ensures we don't get GeometryCollections
     return gpd.clip(gdf, mask, keep_geom_type=True)

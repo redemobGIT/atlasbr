@@ -4,12 +4,11 @@ AtlasBR - Core Catalog for CNES (Healthcare) Data.
 Defines infrastructure groups, unit codes, and the fetching contract.
 """
 
-from typing import Literal, List, Dict, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal, List, Dict
+from pydantic import BaseModel, ConfigDict
 
 # --- Constants (Taxonomy) ---
 
-# Map Unit Code -> Description (for reference or filtering)
 CNES_UNIT_CODES: Dict[str, str] = {
     "1": "Hospital Geral",
     "2": "Hospital Especializado",
@@ -34,7 +33,6 @@ CNES_UNIT_CODES: Dict[str, str] = {
     "21": "Centro de Saúde Escola",
 }
 
-# Group raw columns into semantic concepts
 CNES_INFRASTRUCTURE_GROUPS: Dict[str, List[str]] = {
     "total_leitos_internacao": [
         "quantidade_leito_clinico",
@@ -104,7 +102,7 @@ class CnesThemeSpec(BaseModel):
     month: int
     strategy: Literal["bd_complex_sql"]
     
-    # Table identifiers (defaulting to current BD values)
+    # Table identifiers
     table_estab: str = "basedosdados.br_ms_cnes.estabelecimento"
     table_prof: str = "basedosdados.br_ms_cnes.profissional"
 
