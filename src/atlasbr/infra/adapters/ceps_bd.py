@@ -5,7 +5,7 @@ AtlasBR - Infrastructure Adapter for CEPs (Base dos Dados).
 import pandas as pd
 from typing import Iterable
 
-from atlasbr.settings import get_billing_id
+from atlasbr.settings import get_billing_id, logger
 
 def fetch_ceps_from_bd(
     munis: Iterable[int],
@@ -34,7 +34,7 @@ def fetch_ceps_from_bd(
         WHERE id_municipio IN ({muni_list_sql})
     """
     
-    print(f"    📍 Fetching CEP coordinates from Base dos Dados...")
+    logger.info(f"    📍 Fetching CEP coordinates from Base dos Dados...")
     df = bd.read_sql(query, billing_project_id=project_id)
     
     # Standardize CEP to 8 digits string just in case

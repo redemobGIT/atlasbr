@@ -8,7 +8,7 @@ It constructs and executes SQL queries based on the specs provided by the Core l
 import pandas as pd
 from typing import List, Iterable
 
-from atlasbr.settings import get_billing_id
+from atlasbr.settings import get_billing_id, logger
 
 def fetch_from_bd(
     table_id: str,
@@ -50,7 +50,7 @@ def fetch_from_bd(
         WHERE SUBSTR(id_setor_censitario, 1, 7) IN ({muni_list_sql})
     """
 
-    print(f"    ☁️  Fetching {len(columns)} columns from {table_id}...")
+    logger.info(f"    ☁️  Fetching {len(columns)} columns from {table_id}...")
 
     df = bd.read_sql(query, billing_project_id=project_id)
 

@@ -4,11 +4,13 @@ AtlasBR - Infrastructure Adapter for Schools (Base dos Dados).
 
 import pandas as pd
 from typing import Iterable
-from atlasbr.settings import get_billing_id
+from atlasbr.settings import logger
 
 def fetch_schools_from_bd(
     munis: Iterable[int],
     year: int,
+    table_dir: str,
+    table_census: str,
     billing_id: str | None = None,
 ) -> pd.DataFrame:
     """
@@ -17,20 +19,11 @@ def fetch_schools_from_bd(
     """
     try:
         import basedosdados as bd
-    except ImportError as e:
-        raise ImportError(
-            "Loading INEP (School) data requires the optional dependency 'basedosdados'. "
-            "Please install it via `pip install atlasbr[bd]`."
-        ) from e
-
-    project_id = billing_id or get_billing_id()
+    except ImportError:
+         raise ImportError("Basedosdados is required for Schools fetching.")
 
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
     
-    # Identify tables
-    table_dir = "basedosdados.br_bd_diretorios_brasil.escola"
-    table_census = "basedosdados.br_inep_censo_escolar.escola"
-
     query = f"""
         WITH dir AS (
             SELECT
@@ -103,5 +96,5 @@ def fetch_schools_from_bd(
         JOIN cen AS c USING (id_escola)
     """
     
-    print(f"    🎓 Fetching Schools {year} from Base dos Dados...")
-    return bd.read_sql(query, billing_project_id=project_id)
+    logger.info(f"    🎓 Fetching Schools {year} from Base dos Dados...")
+    return bd.read_sql(query, billing_project_id=billing_id)

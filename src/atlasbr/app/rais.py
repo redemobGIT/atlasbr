@@ -3,6 +3,7 @@ AtlasBR - Application Layer for RAIS (Hybrid Pipeline).
 """
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 from typing import List, Union, Optional
 
 from atlasbr.core.catalog.rais import get_rais_spec
@@ -22,7 +23,6 @@ def load_rais(
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     
     # 1. Configuration
-    # Standardize billing resolution for all downstream calls (RAIS, CEPs, Inep, CNES)
     project_id = resolve_billing_id(gcp_billing)
 
     # 2. Resolve & Fetch RAIS
@@ -35,10 +35,15 @@ def load_rais(
             spec.table_id, spec.required_columns, muni_ids, year, project_id
         )
     else:
-        # Fallback or error for unimplemented strategies
         raise NotImplementedError(f"Strategy {strategy} not implemented for RAIS")
 
-    # 3. Logic & Cleaning
+    # 3. Canonical Identity & Cleaning
+    # RAIS rows are unique establishments, but lack a public ID column.
+    # We create a stable surrogate key for internal tracking.
+    df_rais["id_estab_original"] = (
+        f"RAIS_{year}_" + df_rais.reset_index().index.astype(str)
+    )
+    
     df_rais = logic.filter_invalid_legal_nature(df_rais)
     df_rais = logic.clip_outlier_jobs(df_rais)
     
@@ -47,25 +52,24 @@ def load_rais(
         logger.info(f"    🌍 Geocoding RAIS via CEP...")
         from atlasbr.infra.adapters import ceps_bd
         df_ceps = ceps_bd.fetch_ceps_from_bd(muni_ids, project_id)
+        
+        # Merge geometries onto the main dataset
         main_dataset = geocoding.geocode_by_cep(df_rais, df_ceps, "cep")
-        main_dataset = main_dataset.rename(columns={"id_estabelecimento": "id_estab_original"})
     else:
         main_dataset = df_rais
-        main_dataset["id_estab_original"] = None
 
     # 5. Inject Public Sector (Stream 2 & 3)
     if include_public_sector:
         logger.info(f"    ➕ Injecting Public Sector (Schools & Health) for {year}...")
         
-        # Delayed import to avoid circular dependency and eager loading
         from atlasbr.app.inep import load_schools
         from atlasbr.app.cnes import load_cnes
 
-        # A. Load Schools (Lat/Lon) - MATCH YEAR
+        # A. Load Schools (Lat/Lon)
         try:
             schools = load_schools(
-                places=muni_ids, # Pass IDs directly
-                year=year,       # Use the requested year
+                places=muni_ids,
+                year=year,
                 gcp_billing=project_id, 
                 as_gdf=geocode
             )
@@ -73,13 +77,12 @@ def load_rais(
             logger.warning(f"Failed to load Schools for {year}: {e}. Skipping injection.")
             schools = pd.DataFrame()
 
-        # B. Load CNES (CEP) - MATCH YEAR, Keep Month=9
-        # TODO: consider making month configurable or use a different one
+        # B. Load CNES (CEP)
         try:
             health = load_cnes(
                 places=muni_ids, 
-                year=year,       # Use the requested year
-                month=9,         # Keeping September fixed as requested
+                year=year,
+                month=9,
                 gcp_billing=project_id, 
                 geocode=geocode
             )
@@ -88,21 +91,29 @@ def load_rais(
             health = pd.DataFrame()
         
         # C. Harmonize
+        # These functions align columns to RAIS standards (cnae_2, etc.)
         schools_h = integration.harmonize_schools_to_rais(schools)
         health_h = integration.harmonize_cnes_to_rais(health)
         
+        # Standardize ID column names for the merge
+        if not schools_h.empty and "id_escola" in schools_h.columns:
+             schools_h = schools_h.rename(columns={"id_escola": "id_estab_original"})
+        
+        if not health_h.empty and "id_estabelecimento_cnes" in health_h.columns:
+             health_h = health_h.rename(columns={"id_estabelecimento_cnes": "id_estab_original"})
+
         # D. Hybrid Merge
-        # Check if we actually have data to merge
         to_merge = [main_dataset]
         if not schools_h.empty: to_merge.append(schools_h)
         if not health_h.empty: to_merge.append(health_h)
         
-        main_dataset = pd.concat(to_merge, ignore_index=True)
-        
-        logger.info(f"       -> Integrated {len(schools_h)} schools and {len(health_h)} health units.")
+        if len(to_merge) > 1:
+            main_dataset = pd.concat(to_merge, ignore_index=True)
+            logger.info(f"       -> Integrated {len(schools_h)} schools and {len(health_h)} health units.")
 
     # 6. Enrich Metadata
     main_dataset = logic.enrich_cnae_metadata(main_dataset, cnae_col="cnae_2")
     
     logger.info(f"✅ Loaded {len(main_dataset)} total establishments.")
+    
     return main_dataset

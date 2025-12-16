@@ -32,12 +32,13 @@ def load_cnes(
     spec = get_cnes_spec(year, month)
     
     # 4. Fetch Data
-    # Local import for lazy loading (prevents eager basedosdados load)
     from atlasbr.infra.adapters import cnes_bd
     df_cnes = cnes_bd.fetch_cnes_from_bd(
         munis=muni_ids,
         year=year,
         month=month,
+        table_estab=spec.table_estab,
+        table_prof=spec.table_prof,
         billing_id=project_id
     )
     

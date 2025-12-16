@@ -21,14 +21,14 @@ from atlasbr.infra.storage.cache import cached_download, url_to_filename
 def _download_zip_ftp(url: str) -> BytesIO:
     """
     Downloads a ZIP file from a URL to the local cache and returns it as a BytesIO object.
-    
     The file is stored in <cache_dir>/ibge/census/<hash>.zip.
     """
     rel_path = Path("ibge") / "census" / url_to_filename(url, suffix=".zip")
     
-    # Leverages the new disk cache utility
+    # Uses the hardened cache logic (retries + streaming)
     zip_path = cached_download(url, relpath=rel_path, timeout=180)
     
+    # Return bytes for ZipFile processing
     return BytesIO(zip_path.read_bytes())
 
 
@@ -36,29 +36,20 @@ def _download_zip_ftp(url: str) -> BytesIO:
 def fetch_income_ftp_2022(url: str) -> pd.DataFrame:
     """
     Downloads and parses the 2022 Income aggregates from IBGE.
-    
-    Args:
-        url: Direct URL to the .zip file.
-
-    Returns:
-        pd.DataFrame: DataFrame with 'rendimento_medio', indexed by 'id_setor_censitario'.
     """
     logger.info(f"    ⬇️  Fetching Income 2022 from FTP (cached)...")
 
-    # Use the shared cached downloader
     try:
         zip_bytes = _download_zip_ftp(url)
     except Exception as e:
          raise RuntimeError(f"Failed to retrieve Income data from {url}") from e
 
     with zipfile.ZipFile(zip_bytes) as zf:
-        # Find the first CSV in the archive
         try:
             csv_filename = next(p for p in zf.namelist() if p.lower().endswith(".csv"))
         except StopIteration:
             raise FileNotFoundError("No CSV file found inside the IBGE ZIP archive.")
 
-        # Read specific columns
         df = pd.read_csv(
             zf.open(csv_filename),
             sep=";",
@@ -72,7 +63,6 @@ def fetch_income_ftp_2022(url: str) -> pd.DataFrame:
         columns={"CD_SETOR": "id_setor_censitario", "V06004": "rendimento_medio"}
     )
 
-    # Fix formatting (IBGE uses 'X' for nulls and ',' for decimals)
     df["rendimento_medio"] = (
         df["rendimento_medio"]
         .astype(str)
@@ -128,9 +118,5 @@ def fetch_census_ftp(spec: CensusThemeSpec) -> pd.DataFrame:
 
     logger.info(f"    ⬇️  Fetching {spec.theme} {spec.year} from IBGE FTP (cached)...")
     
-    try:
-        zip_bytes = _download_zip_ftp(spec.url)
-    except Exception as e:
-        raise RuntimeError(f"Failed to retrieve {spec.theme} data from {spec.url}") from e
-        
+    zip_bytes = _download_zip_ftp(spec.url)
     return _extract_and_clean(zip_bytes, spec)

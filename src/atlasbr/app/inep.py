@@ -31,11 +31,12 @@ def load_schools(
     spec = get_schools_spec(year)
     
     # 4. Fetch Data
-    # Local import to prevent eager loading of basedosdados
     from atlasbr.infra.adapters import inep_bd
     df_schools = inep_bd.fetch_schools_from_bd(
         munis=muni_ids,
         year=year,
+        table_dir=spec.table_directory,
+        table_census=spec.table_census,
         billing_id=project_id
     )
     

@@ -13,8 +13,19 @@ def to_local_utm(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf.to_crs(utm_crs)
 
 def clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Fixes invalid geometries using buffer(0)."""
+    """
+    Fixes invalid geometries using buffer(0).
+    Only applies fix to geometries marked as invalid to save time.
+    """
     if gdf.empty:
         return gdf
-    gdf["geometry"] = gdf.geometry.buffer(0)
+
+    # Identify invalid geometries
+    invalid_mask = ~gdf.is_valid
+    
+    if invalid_mask.any():
+        # Apply buffer(0) only to invalid rows
+        # We copy to avoid SettingWithCopy warnings if slice
+        gdf.loc[invalid_mask, "geometry"] = gdf.loc[invalid_mask, "geometry"].buffer(0)
+    
     return gdf

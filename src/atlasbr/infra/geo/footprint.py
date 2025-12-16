@@ -37,7 +37,7 @@ def fetch_urban_area_raw_gdf(year: int) -> gpd.GeoDataFrame:
 
     # 1. Download Zip (Cached)
     rel_zip = Path("ibge") / "urban_areas" / url_to_filename(url, suffix=".zip")
-    zip_path = cached_download(url, relpath=rel_zip, timeout=180)
+    zip_path = cached_download(url, relpath=rel_zip, timeout=300) # Large file, longer timeout
 
     # 2. Extract (Cached)
     # We extract into a folder named after the zip hash to keep versions distinct

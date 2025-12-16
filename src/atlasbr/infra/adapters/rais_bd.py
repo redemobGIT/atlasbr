@@ -4,7 +4,7 @@ AtlasBR - Infrastructure Adapter for RAIS (Base dos Dados).
 
 import pandas as pd
 from typing import List, Iterable
-from atlasbr.settings import get_billing_id
+from atlasbr.settings import get_billing_id, logger
 
 def fetch_rais_from_bd(
     table_id: str,
@@ -35,5 +35,5 @@ def fetch_rais_from_bd(
           AND id_municipio IN ({muni_list_sql})
     """
     
-    print(f"    🏭 Fetching RAIS {year} from Base dos Dados...")
+    logger.info(f"    🏭 Fetching RAIS {year} from Base dos Dados...")
     return bd.read_sql(query, billing_project_id=project_id)

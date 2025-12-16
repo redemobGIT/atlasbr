@@ -1,11 +1,3 @@
-# --- Secrets & Environment ---
-.env
-.env.*
-.venv/
-venv/
-env/
-ENV/
-
 # --- Python ---
 __pycache__/
 *.py[cod]
@@ -24,31 +16,27 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# --- Project Specific (AtlasBR) ---
-# Do not commit the local data cache
-.atlasbr_cache/
+# --- Virtual Environments ---
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Do not commit large analysis outputs or raw data
-outputs/
-data/
-*.parquet
-*.geoparquet
-*.csv
-*.zip
-*.shp
-*.shx
-*.dbf
-*.geojson
+# --- IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# --- Unit Test / Coverage ---
+# --- Testing & Type Checking ---
 .tox/
-.nox/
 .coverage
 .coverage.*
 .cache
@@ -58,13 +46,16 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
-cover/
+.mypy_cache/
+.ruff_cache/
 
-# --- IDEs ---
-.vscode/
-.idea/
-*.swp
+# --- AtlasBR Specific ---
+# Ignore the local disk cache where IBGE/Census files are downloaded
+.atlasbr_cache/
 
-# --- OS ---
-.DS_Store
-Thumbs.db
+# Ignore local environment variables
+.env
+.env.local
+
+# Ignore usage examples/notebooks unless explicitly tracked
+# examples/scratchpad.ipynb

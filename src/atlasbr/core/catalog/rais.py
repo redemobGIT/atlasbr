@@ -7,7 +7,7 @@ Defines the contract for fetching RAIS data and the taxonomies for CNAE codes.
 from typing import Literal, List, Tuple, Dict, Optional
 from pydantic import BaseModel, Field
 
-# --- CNAE Constants (Moved from cnae.py) ---
+# --- CNAE Constants ---
 
 # Official mapping: (Section Letter, Start Division, End Division)
 CNAE_SECTIONS_DEF: List[Tuple[str, int, int]] = [
@@ -56,26 +56,31 @@ class RaisThemeSpec(BaseModel):
 
 RAIS_CATALOG: List[RaisThemeSpec] = [
     RaisThemeSpec(
-        year=2022, # Example year
+        year=2022, 
         strategy="bd_table",
         table_id="basedosdados.br_me_rais.microdados_estabelecimentos",
-        # We fetch raw jobs to clip outliers later in Logic
         required_columns=[
-            "tipo_estabelecimento", "cnae_2", "quantidade_vinculos_ativos", 
-            "cep", "natureza_juridica"
+            "id_municipio", 
+            "tipo_estabelecimento", 
+            "cnae_2", 
+            "quantidade_vinculos_ativos", 
+            "cep", 
+            "natureza_juridica"
         ]
     )
 ]
 
 def get_rais_spec(year: int) -> RaisThemeSpec:
-    # Simplified lookup for now
-    # In production, maybe generate specs dynamically if table names follow a pattern
     return RaisThemeSpec(
         year=year,
         strategy="bd_table",
         table_id="basedosdados.br_me_rais.microdados_estabelecimentos",
         required_columns=[
-            "tipo_estabelecimento", "cnae_2", "quantidade_vinculos_ativos", 
-            "cep", "natureza_juridica"
+            "id_municipio",
+            "tipo_estabelecimento", 
+            "cnae_2", 
+            "quantidade_vinculos_ativos", 
+            "cep", 
+            "natureza_juridica"
         ]
     )

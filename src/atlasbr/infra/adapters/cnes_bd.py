@@ -5,13 +5,12 @@ AtlasBR - Infrastructure Adapter for CNES (Base dos Dados).
 import pandas as pd
 from typing import Iterable
 from atlasbr.core.catalog.cnes import CNES_INFRASTRUCTURE_GROUPS, CNES_UNIT_CODES
-from atlasbr.settings import get_billing_id
+from atlasbr.settings import logger
 
 def _build_infra_selects() -> str:
     """Helper to generate COALESCE sums for infrastructure groups."""
     selects = []
     for alias, cols in CNES_INFRASTRUCTURE_GROUPS.items():
-        # SQL: COALESCE(col1, 0) + COALESCE(col2, 0) ... AS alias
         sum_expr = " + ".join(f"COALESCE({c}, 0)" for c in cols)
         selects.append(f"{sum_expr} AS {alias}")
     return ",\n        ".join(selects)
@@ -20,21 +19,19 @@ def fetch_cnes_from_bd(
     munis: Iterable[int],
     year: int,
     month: int,
+    table_estab: str,
+    table_prof: str,
     billing_id: str | None = None,
 ) -> pd.DataFrame:
     """
     Executes the complex CNES query including infrastructure aggregation
     and worker counting via BigQuery.
     """
+    # Note: Import inside function to avoid optional dependency error at module level
     try:
         import basedosdados as bd
-    except ImportError as e:
-        raise ImportError(
-            "Loading CNES data requires the optional dependency 'basedosdados'. "
-            "Please install it via `pip install atlasbr[bd]`."
-        ) from e
-
-    project_id = billing_id or get_billing_id()
+    except ImportError:
+         raise ImportError("Basedosdados is required for CNES fetching.")
 
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
     
@@ -42,13 +39,8 @@ def fetch_cnes_from_bd(
     unit_codes = list(CNES_UNIT_CODES.keys())
     unit_list_sql = ", ".join(f"'{c}'" for c in unit_codes)
     
-    # Generate dynamic parts of the query
     infra_sql = _build_infra_selects()
     
-    # Identify tables (hardcoded here or passed from spec)
-    table_estab = "basedosdados.br_ms_cnes.estabelecimento"
-    table_prof = "basedosdados.br_ms_cnes.profissional"
-
     query = f"""
         WITH estab AS (
             SELECT
@@ -104,5 +96,5 @@ def fetch_cnes_from_bd(
         LEFT JOIN workers AS w USING (id_estabelecimento_cnes)
     """
     
-    print(f"    🏥 Fetching CNES {month}/{year} from Base dos Dados...")
-    return bd.read_sql(query, billing_project_id=project_id)
+    logger.info(f"    🏥 Fetching CNES {month}/{year} from Base dos Dados...")
+    return bd.read_sql(query, billing_project_id=billing_id)

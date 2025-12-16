@@ -1,13 +1,16 @@
 """
 AtlasBR - Application Layer for Census Data.
 
-Orchestrates fetching geometries, retrieving attributes (BD/FTP),
-and performing spatial operations (Clipping, H3 Interpolation).
+Orchestrates the entire Census data pipeline:
+1. Resolves municipality names/IDs to geometries.
+2. Fetches attribute data (Demographics, Income) via lazy-loaded adapters (BD or FTP).
+3. Standardizes columns to a canonical schema.
+4. Performs optional spatial operations (Clipping to urban footprints, H3 aggregation).
 """
 
 import pandas as pd
 import geopandas as gpd
-from typing import List, Literal, Optional
+from typing import List, Optional
 
 # --- Internal Modules ---
 from atlasbr.core.catalog.census import get_theme_spec
@@ -20,23 +23,12 @@ from atlasbr.core.geo import h3 as geo_spatial
 from atlasbr.settings import logger, resolve_billing_id
 from atlasbr.core.types import PlaceInput, CensusTheme, GeoGranularity
 
-# --- Dispatch Registry ---
-_TRANSFORM_REGISTRY = {
-    ("basic", 2010): logic.harmonize_basic_2010,
-    ("income", 2010): logic.harmonize_income_2010,
-    ("age", 2010): logic.process_age_2010,
-    ("race", 2010): logic.process_race_2010,
-    ("age", 2022): logic.process_age_2022,
-    ("race", 2022): logic.process_race_2022,
-    ("basic", 2022): lambda df: df.rename(columns={"pessoas": "habitantes"}),
-}
-
 
 def load_census(
     places: List[PlaceInput],
     *,
     year: int = 2010,
-    themes: List[CensusTheme] = ["basic", "income"],
+    themes: Optional[List[CensusTheme]] = None,
     gcp_billing: Optional[str] = None,
     strategy: str,
     clip_urban: bool = True,
@@ -49,15 +41,19 @@ def load_census(
     Args:
         places: List of municipalities (IDs or "Name, UF").
         year: Census year (2010 or 2022).
-        themes: List of themes to load.
-        gcp_billing: Google Cloud Project ID (overrides env var).
-        clip_urban: If True, clips tracts to the urban footprint.
-        geometry: Output format ("tract" or "h3").
-        h3_res: H3 resolution level (if geometry="h3").
+        themes: List of themes to load (default: ["basic", "income"]).
+        gcp_billing: Google Cloud Project ID (overrides env var, only used for 'bd_table').
+        strategy: Data source strategy ('bd_table' or 'ftp_csv').
+        clip_urban: If True, clips tracts to the urban footprint (removes rural/empty areas).
+        geometry: Output spatial unit ("tract" or "h3").
+        h3_res: H3 resolution level (only used if geometry="h3").
 
     Returns:
-        gpd.GeoDataFrame: Indexed by 'id_setor_censitario' or 'h3_index'.
+        gpd.GeoDataFrame: Census data indexed by 'id_setor_censitario' or 'h3_index'.
     """
+    if themes is None:
+        themes = ["basic", "income"]
+
     # 1. Resolve Inputs
     muni_ids = resolver.resolve_places_to_ids(places)
     logger.info(
@@ -72,9 +68,13 @@ def load_census(
     if clip_urban:
         logger.info(f"    ✂️  Clipping to Urban Area...")
         raw_urban = infra_urban.fetch_urban_area_raw_gdf(year)
+        
         urban_mask = geo_ops.create_urban_mask(
-            raw_urban, bbox=gdf.total_bounds, target_crs=str(gdf.crs)
+            raw_urban, 
+            bbox=gdf.total_bounds, 
+            target_crs=str(gdf.crs)
         )
+        
         gdf = geo_ops.clip_to_mask(gdf, urban_mask)
         logger.info(f"       -> Retained {len(gdf)} tracts after clip.")
 
@@ -88,27 +88,25 @@ def load_census(
             logger.warning(f"        ⚠️ Warning: {e}. Skipping.")
             continue
 
-        # Strategy Dispatch
+        # Strategy Dispatch (Lazy Imports)
         if spec.strategy == "bd_table":
             from atlasbr.infra.adapters import census_bd
-            # Only resolve billing if we are actually using BigQuery
+            # Billing is only resolved if we actually hit BigQuery
             project_id = resolve_billing_id(gcp_billing)
             df_raw = census_bd.fetch_from_bd(
                 spec.table_id, spec.required_columns, muni_ids, project_id
             )
+
         elif spec.strategy == "ftp_csv":
             from atlasbr.infra.adapters import census_ftp
             df_raw = census_ftp.fetch_census_ftp(spec)
+
         else:
             logger.warning(f"        ⚠️ Unknown strategy '{spec.strategy}'. Skipping.")
             continue
 
-        # Transform
-        transform_func = _TRANSFORM_REGISTRY.get((theme, year))
-        if transform_func:
-            df_clean = transform_func(df_raw)
-        else:
-            df_clean = df_raw
+        # Standardize Columns (Enforce Canonical Schema)
+        df_clean = logic.standardize_census_dataframe(df_raw, theme, year, strategy)
 
         # Merge
         gdf = gdf.join(df_clean, how="left")
@@ -117,32 +115,34 @@ def load_census(
     if geometry == "h3":
         logger.info(f"    ⬢  Aggregating to H3 Grid (Res {h3_res})...")
 
-        # A. Generate H3 Grid covering the current Tracts
+        # A. Generate H3 Grid
         gdf_h3 = geo_spatial.h3fy(
             source=gdf,
             resolution=h3_res,
-            buffer=True,  # Ensure edges are covered
-            clip=False,  # Do not hard-clip hexes for interpolation accuracy
+            buffer=True,
+            clip=False,
         )
 
-        # B. Define Variable Types for Areal Weighting
-        all_cols = [
-            c for c in gdf.columns if c not in ["geometry", "id_setor_censitario"]
-        ]
+        # B. Define Variable Types for Areal Interpolation
         # Heuristic: Rates/Means are Intensive, Counts/Totals are Extensive
-        intensive = [
-            c
-            for c in all_cols
-            if any(x in c for x in ["rendimento", "taxa", "mean", "rate"])
+        # TODO: Move this configuration to the core logic/catalog in future refactors
+        excluded_cols = {"geometry", "id_setor_censitario"}
+        candidate_cols = [c for c in gdf.columns if c not in excluded_cols]
+        
+        intensive_keywords = {"rendimento", "taxa", "mean", "rate"}
+        
+        intensive_vars = [
+            c for c in candidate_cols 
+            if any(k in c for k in intensive_keywords)
         ]
-        extensive = [c for c in all_cols if c not in intensive]
+        extensive_vars = [c for c in candidate_cols if c not in intensive_vars]
 
         # C. Interpolate
         gdf = geo_spatial.interpolate_area_weighted(
             source_gdf=gdf,
             target_gdf=gdf_h3,
-            extensive_vars=extensive,
-            intensive_vars=intensive,
+            extensive_vars=extensive_vars,
+            intensive_vars=intensive_vars,
         )
         logger.info(f"       -> Interpolated data to {len(gdf)} hexagons.")
 

@@ -5,7 +5,7 @@ Defines infrastructure groups, unit codes, and the fetching contract.
 """
 
 from typing import Literal, List, Dict, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # --- Constants (Taxonomy) ---
 
@@ -98,14 +98,15 @@ CNES_INFRASTRUCTURE_GROUPS: Dict[str, List[str]] = {
 # --- Domain Spec ---
 
 class CnesThemeSpec(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    
     year: int
     month: int
-    strategy: Literal["bd_complex_sql"] # SQL is too complex to split cleanly right now
+    strategy: Literal["bd_complex_sql"]
+    
+    # Table identifiers (defaulting to current BD values)
     table_estab: str = "basedosdados.br_ms_cnes.estabelecimento"
     table_prof: str = "basedosdados.br_ms_cnes.profissional"
-
-    class Config:
-        frozen = True
 
 def get_cnes_spec(year: int, month: int) -> CnesThemeSpec:
     return CnesThemeSpec(year=year, month=month, strategy="bd_complex_sql")

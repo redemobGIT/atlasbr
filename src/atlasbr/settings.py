@@ -11,7 +11,6 @@ logger = logging.getLogger("atlasbr")
 logger.addHandler(logging.NullHandler()) # Default to silence unless configured
 
 # Environment Variable Names
-# TODO: Consider the need for this in the future
 ENV_BILLING_ID = "ATLASBR_BILLING_ID"
 ENV_CACHE_DIR = "ATLASBR_CACHE_DIR"
 
