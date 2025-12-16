@@ -21,11 +21,14 @@ def load_rais(
     *,
     year: int = 2022,
     gcp_billing: Optional[str] = None,
+    strategy: str,
     geocode: bool = False,
     include_public_sector: bool = False,
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     
-    project_id = gcp_billing or settings.get_billing_id()
+    project_id = None
+    if strategy in {"bd_table"}:  # adapt to your actual strategy names
+        project_id = gcp_billing or get_billing_id()
 
     # 1. Resolve & Fetch RAIS
     muni_ids = resolver.resolve_places_to_ids(places)

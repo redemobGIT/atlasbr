@@ -60,7 +60,9 @@ def load_census(
         gpd.GeoDataFrame: Indexed by 'id_setor_censitario' or 'h3_index'.
     """
     # 0. Configuration
-    project_id = gcp_billing or settings.get_billing_id()
+    project_id = None
+    if strategy in {"bd_table"}:  # adapt to your actual strategy names
+        project_id = gcp_billing or get_billing_id()
 
     # 1. Resolve Inputs
     muni_ids = resolver.resolve_places_to_ids(places)
