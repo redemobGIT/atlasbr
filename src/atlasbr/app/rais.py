@@ -9,8 +9,7 @@ from atlasbr.core.catalog.rais import get_rais_spec
 from atlasbr.core.logic import rais as logic, geocoding, integration
 from atlasbr.infra.adapters import rais_bd, ceps_bd
 from atlasbr.infra.geo import resolver
-from atlasbr import settings
-from atlasbr.settings import logger
+from atlasbr.settings import get_billing_id, logger
 from atlasbr.core.types import PlaceInput
 
 # Sub-apps (Note: Importing from 'inep' as per your file naming)

@@ -5,7 +5,7 @@ AtlasBR - Infrastructure Adapter for Schools (Base dos Dados).
 import pandas as pd
 import basedosdados as bd
 from typing import Iterable, List
-from atlasbr import settings
+from atlasbr.settings import get_billing_id
 
 def fetch_schools_from_bd(
     munis: Iterable[int],

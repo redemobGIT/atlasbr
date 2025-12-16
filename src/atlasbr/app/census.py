@@ -18,8 +18,7 @@ from atlasbr.infra.geo import footprint as infra_urban
 from atlasbr.infra.geo import resolver
 from atlasbr.core.geo import ops as geo_ops
 from atlasbr.core.geo import h3 as geo_spatial
-from atlasbr import settings
-from atlasbr.settings import logger
+from atlasbr.settings import get_billing_id, logger
 from atlasbr.core.types import PlaceInput, CensusTheme, GeoGranularity
 
 # --- Dispatch Registry ---

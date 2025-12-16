@@ -5,7 +5,7 @@ AtlasBR - Infrastructure Adapter for RAIS (Base dos Dados).
 import pandas as pd
 import basedosdados as bd
 from typing import List, Iterable
-from atlasbr import settings
+from atlasbr.settings import get_billing_id
 
 def fetch_rais_from_bd(
     table_id: str,

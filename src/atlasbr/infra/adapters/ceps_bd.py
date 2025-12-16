@@ -6,7 +6,7 @@ import pandas as pd
 import basedosdados as bd
 from typing import Iterable
 
-from atlasbr import settings
+from atlasbr.settings import get_billing_id
 
 def fetch_ceps_from_bd(
     munis: Iterable[int],

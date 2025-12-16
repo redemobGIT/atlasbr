@@ -6,7 +6,7 @@ import pandas as pd
 import basedosdados as bd
 from typing import Iterable, List
 from atlasbr.core.catalog.cnes import CNES_INFRASTRUCTURE_GROUPS, CNES_UNIT_CODES
-from atlasbr import settings
+from atlasbr.settings import get_billing_id
 
 def _build_infra_selects() -> str:
     """Helper to generate COALESCE sums for infrastructure groups."""
