@@ -1,58 +1,80 @@
 """
-AtlasBR - Infrastructure Adapter for Base dos Dados (BigQuery).
+AtlasBR - Infrastructure Adapter for Census (Base dos Dados).
 
-This module handles the physical connection to BigQuery using the `basedosdados` library.
-It constructs and executes SQL queries based on the specs provided by the Core layer.
+Handles fetching Census data via BigQuery SQL.
 """
-
 import pandas as pd
-from typing import List, Iterable
+from typing import List, Optional, Set
 
+from atlasbr.core.catalog.census import CensusThemeSpec
 from atlasbr.settings import get_billing_id, logger
 
-def fetch_from_bd(
-    table_id: str,
-    columns: List[str],
-    munis: Iterable[int],
-    billing_id: str | None = None,
+
+def fetch_census_bd(
+    spec: CensusThemeSpec,
+    munis: List[int],
+    billing_id: Optional[str] = None
 ) -> pd.DataFrame:
     """
-    Fetches raw columns from a Base dos Dados table for specific municipalities.
+    Fetches Census data from Base dos Dados (BigQuery).
 
     Args:
-        table_id: The full BigQuery table ID (e.g., 'basedosdados.br_ibge...').
-        columns: List of column names to select.
-        munis: List of 7-digit IBGE municipality codes.
+        spec: The Census theme specification.
+        munis: List of 7-digit municipality IDs.
         billing_id: Google Cloud Project ID for billing.
 
     Returns:
-        pd.DataFrame: DataFrame indexed by 'id_setor_censitario'.
+        pd.DataFrame: Data indexed by 'id_setor_censitario'.
     """
     try:
         import basedosdados as bd
     except ImportError as e:
         raise ImportError(
-            "The 'bd_table' strategy requires the optional dependency 'basedosdados'. "
-            "Please install it via `pip install atlasbr[bd]` or use a different strategy."
+            "Fetching from Base dos Dados requires the 'basedosdados' lib. "
+            "Install via `pip install atlasbr[bd]`."
         ) from e
 
     project_id = billing_id or get_billing_id()
 
-    # Defensive formatting: ensure munis are strings of length 7
+    # 1. Construct SQL
+    # Always include the tract identifier so downstream joins work reliably.
+    raw_cols = ["id_setor_censitario", *spec.required_columns]
+
+    # De-duplicate while preserving order
+    seen: Set[str] = set()
+    cols = [c for c in raw_cols if not (c in seen or seen.add(c))]
+    columns_str = ", ".join(cols)
+
+    # Format municipalities for SQL IN clause
     muni_list_sql = ", ".join(f"'{int(m):07d}'" for m in munis)
 
-    # Construct the SELECT clause
-    cols_sql = ", ".join(columns)
-
     query = f"""
-        SELECT id_setor_censitario, {cols_sql}
-        FROM `{table_id}`
-        WHERE SUBSTR(id_setor_censitario, 1, 7) IN ({muni_list_sql})
+        SELECT {columns_str}
+        FROM `{spec.table_id}`
+        WHERE id_municipio IN ({muni_list_sql})
     """
 
-    logger.info(f"    ☁️  Fetching {len(columns)} columns from {table_id}...")
+    logger.info(
+        f"    ☁️  Querying Base dos Dados ({spec.theme} {spec.year})..."
+    )
 
+    # 2. Execute
     df = bd.read_sql(query, billing_project_id=project_id)
 
-    # Standardize index immediately
-    return df.set_index("id_setor_censitario")
+    # 3. Post-processing
+    # Standardize column names so BD and FTP strategies return compatible outputs
+    if getattr(spec, "column_map", None):
+        df = df.rename(columns=spec.column_map)
+
+    # Standardize ID and set index for joins
+    if "id_setor_censitario" in df.columns:
+        df["id_setor_censitario"] = (
+            df["id_setor_censitario"].astype(str).str.zfill(15)
+        )
+        df = df.set_index("id_setor_censitario")
+
+    # Ensure numeric types for data columns
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="ignore")
+
+    return df

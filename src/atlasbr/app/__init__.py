@@ -1,11 +1,12 @@
-from .census import load_census
-from .rais import load_rais
-from .cnes import load_cnes
-from .inep import load_schools
+"""
+AtlasBR - Application Layer.
 
-__all__ = [
-    "load_census",
-    "load_rais",
-    "load_cnes",
-    "load_schools",
-]
+Modules:
+- census: Load Census data.
+- rais: Load Employment data.
+- cnes: Load Healthcare Infrastructure.
+- inep: Load Schools.
+"""
+
+# Explicitly empty to prevent eager loading.
+# Users should use: from atlasbr.app.census import load_census

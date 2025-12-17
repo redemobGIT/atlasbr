@@ -1,153 +1,189 @@
 """
 AtlasBR - Application Layer for Census Data.
 
-Orchestrates the entire Census data pipeline:
-1. Resolves municipality names/IDs to geometries.
-2. Fetches attribute data (Demographics, Income) via lazy-loaded adapters (BD or FTP).
-3. Standardizes columns to a canonical schema.
-4. Performs optional spatial operations (Clipping to urban footprints, H3 aggregation).
+Orchestrates the loading of tabular data (BD/FTP) and spatial geometries
+(Tracts/H3) to produce ready-to-use GeoDataFrames.
 """
-
 import pandas as pd
 import geopandas as gpd
-from typing import List, Optional
+from typing import List, Union, Optional
 
-# --- Internal Modules ---
-from atlasbr.core.catalog.census import get_theme_spec
-from atlasbr.core.logic import census as logic
-from atlasbr.infra.geo import tracts as infra_tracts
-from atlasbr.infra.geo import footprint as infra_urban
-from atlasbr.infra.geo import resolver
-from atlasbr.core.geo import ops as geo_ops
-from atlasbr.core.geo import h3 as geo_spatial
+from atlasbr.core.catalog.census import get_census_spec
+from atlasbr.infra.geo import resolver, tracts, footprint
+from atlasbr.core.geo import ops, h3 as h3_ops
+from atlasbr.core.logic import census as census_logic
 from atlasbr.settings import logger, resolve_billing_id
-from atlasbr.core.types import PlaceInput, CensusTheme, GeoGranularity
+from atlasbr.core.types import PlaceInput
 
 
 def load_census(
     places: List[PlaceInput],
     *,
     year: int = 2010,
-    themes: Optional[List[CensusTheme]] = None,
-    gcp_billing: Optional[str] = None,
-    strategy: str,
-    clip_urban: bool = True,
-    geometry: GeoGranularity = "tract",
+    themes: List[str] = None,
+    strategy: str = "bd_table",
+    geometry: str = "tract",  # 'tract' or 'h3'
     h3_res: int = 8,
-) -> gpd.GeoDataFrame:
+    gcp_billing: Optional[str] = None,
+    clip_urban: bool = False,
+) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     """
-    Main entry point to load Census data.
+    Loads Census data for the requested places and themes.
+
+    Orchestrates fetching (Infra), normalization (Logic), and
+    spatial operations (Core).
 
     Args:
-        places: List of municipalities (IDs or "Name, UF").
+        places: List of municipality IDs (e.g., 3304557) or names.
         year: Census year (2010 or 2022).
-        themes: List of themes to load (default: ["basic", "income"]).
-        gcp_billing: Google Cloud Project ID (overrides env var, only used for 'bd_table').
-        strategy: Data source strategy ('bd_table' or 'ftp_csv').
-        clip_urban: If True, clips tracts to the urban footprint (removes rural/empty areas).
-        geometry: Output spatial unit ("tract" or "h3").
-        h3_res: H3 resolution level (only used if geometry="h3").
+        themes: List of themes to load (e.g. ['basic', 'income']).
+                Defaults to ['basic'].
+        strategy: 'bd_table' (BigQuery) or 'ftp_csv' (Offline).
+        geometry: Output geometry 'tract' (original) or 'h3' (hex grid).
+        h3_res: H3 resolution if geometry='h3'.
+        gcp_billing: Google Cloud Project ID (required for 'bd_table').
+        clip_urban: If True, clips result to the urban footprint.
 
     Returns:
-        gpd.GeoDataFrame: Census data indexed by 'id_setor_censitario' or 'h3_index'.
+        GeoDataFrame with requested census variables.
     """
     if themes is None:
-        themes = ["basic", "income"]
+        themes = ["basic"]
 
-    # 1. Resolve Inputs
-    muni_ids = resolver.resolve_places_to_ids(places)
-    logger.info(
-        f"🔄 Resolved {len(places)} inputs into {len(muni_ids)} unique municipalities."
+    # 1. Resolve Inputs and Billing
+    project_id = (
+        resolve_billing_id(gcp_billing) if strategy == "bd_table" else None
     )
+    muni_ids = resolver.resolve_places_to_ids(places)
 
-    # 2. Load & Prepare Geometry
-    raw_tracts = infra_tracts.fetch_tracts_raw(muni_ids, year)
-    gdf = geo_ops.prepare_tracts(raw_tracts)
+    if not muni_ids:
+        err_msg = f"Could not resolve any municipalities from: {places}"
+        raise ValueError(err_msg)
 
-    # 3. Clip to Urban Footprint
-    if clip_urban:
-        logger.info(f"    ✂️  Clipping to Urban Area...")
-        raw_urban = infra_urban.fetch_urban_area_raw_gdf(year)
-        
-        urban_mask = geo_ops.create_urban_mask(
-            raw_urban, 
-            bbox=gdf.total_bounds, 
-            target_crs=str(gdf.crs)
-        )
-        
-        gdf = geo_ops.clip_to_mask(gdf, urban_mask)
-        logger.info(f"       -> Retained {len(gdf)} tracts after clip.")
+    # 2. Load and Normalize Data (Iterate themes)
+    merged_df = pd.DataFrame()
+    extensive_vars: List[str] = []
+    intensive_vars: List[str] = []
 
-    # 4. Iterate & Load Themes
     for theme in themes:
-        logger.info(f"    📦 Loading theme: '{theme}'...")
+        spec = get_census_spec(year, theme, strategy)
+        logger.info(
+            f"    📦 Loading theme: '{theme}' via {strategy}..."
+        )
 
         try:
-            spec = get_theme_spec(theme, year, strategy)
-        except ValueError as e:
-            logger.warning(f"        ⚠️ Warning: {e}. Skipping.")
-            continue
+            # A. Fetch Raw Data
+            if spec.strategy == "bd_table":
+                from atlasbr.infra.adapters import census_bd
+                df_raw = census_bd.fetch_census_bd(
+                    spec, munis=muni_ids, billing_id=project_id
+                )
+            elif spec.strategy == "ftp_csv":
+                from atlasbr.infra.adapters import census_ftp
+                df_raw = census_ftp.fetch_census_ftp(spec, munis=muni_ids)
+            else:
+                raise NotImplementedError(
+                    f"Strategy {strategy} not implemented."
+                )
 
-        # Strategy Dispatch (Lazy Imports)
-        if spec.strategy == "bd_table":
-            from atlasbr.infra.adapters import census_bd
-            # Billing is only resolved if we actually hit BigQuery
-            project_id = resolve_billing_id(gcp_billing)
-            df_raw = census_bd.fetch_from_bd(
-                spec.table_id, spec.required_columns, muni_ids, project_id
+            # B. Apply Logic (Transformation Layer)
+            # This handles race imputation, residuals, and type enforcement.
+            df_clean = census_logic.standardize_census_dataframe(
+                df_raw, spec
             )
 
-        elif spec.strategy == "ftp_csv":
-            from atlasbr.infra.adapters import census_ftp
-            df_raw = census_ftp.fetch_census_ftp(spec)
+            # C. Collect Metadata for Aggregation
+            # Assumes spec has these properties defined in Catalog
+            if hasattr(spec, "extensive_vars"):
+                extensive_vars.extend(spec.extensive_vars)
+            if hasattr(spec, "intensive_vars"):
+                intensive_vars.extend(spec.intensive_vars)
 
-        else:
-            logger.warning(f"        ⚠️ Unknown strategy '{spec.strategy}'. Skipping.")
-            continue
+            # D. Merge
+            if merged_df.empty:
+                merged_df = df_clean
+            else:
+                merged_df = merged_df.join(
+                    df_clean, how="outer", rsuffix=f"_{theme}"
+                )
 
-        # Standardize Columns (Enforce Canonical Schema)
-        df_clean = logic.standardize_census_dataframe(df_raw, theme, year, strategy)
+        except Exception as e:
+            logger.error(f"Failed to load theme '{theme}': {e}")
+            raise
 
-        # Merge
-        gdf = gdf.join(df_clean, how="left")
+    if merged_df.empty:
+        raise RuntimeError("No census data found for requested criteria.")
 
-    # 5. H3 Aggregation (Optional)
-    if geometry == "h3":
-        logger.info(f"    ⬢  Aggregating to H3 Grid (Res {h3_res})...")
+    # 3. Handle Geometry (Tracts)
+    logger.info("    🗺️  Fetching Tract Geometries...")
 
-        # A. Generate H3 Grid
-        gdf_h3 = geo_spatial.h3fy(
-            source=gdf,
-            resolution=h3_res,
-            buffer=True,
-            clip=False,
+    raw_tracts = tracts.fetch_tracts_raw(munis=muni_ids, year=year)
+    gdf_tracts = ops.prepare_tracts(raw_tracts)
+
+    # 4. Join Data + Geometry
+    # We use inner join to ensure we only return geometries with data.
+    # However, we log if this results in significant data loss.
+    initial_rows = len(merged_df)
+    gdf_data = gdf_tracts.join(merged_df, how="inner")
+    final_rows = len(gdf_data)
+
+    if final_rows == 0:
+        raise RuntimeError(
+            "Intersection of Census Data and Geometries is empty. "
+            "Check if year/municipality codes align."
         )
 
-        # B. Define Variable Types for Areal Interpolation
-        # Heuristic: Rates/Means are Intensive, Counts/Totals are Extensive
-        # TODO: Move this configuration to the core logic/catalog in future refactors
-        excluded_cols = {"geometry", "id_setor_censitario"}
-        candidate_cols = [c for c in gdf.columns if c not in excluded_cols]
+    if final_rows < initial_rows:
+        dropped = initial_rows - final_rows
+        logger.warning(
+            f"    ⚠️ Dropped {dropped} data rows due to missing "
+            "geometries. This is common if Malha is versioned "
+            "differently from Census data."
+        )
+
+    # 5. Optional: Urban Clipping
+    if clip_urban:
+        logger.info("    ✂️  Clipping to Urban Area...")
+        urban_mask = footprint.fetch_urban_area_raw_gdf(year)
         
-        intensive_keywords = {"rendimento", "taxa", "mean", "rate"}
-        
-        intensive_vars = [
-            c for c in candidate_cols 
-            if any(k in c for k in intensive_keywords)
-        ]
-        extensive_vars = [c for c in candidate_cols if c not in intensive_vars]
+        # Optimize: Create mask only for the ROI bounding box
+        roi_bbox = gdf_data.total_bounds
+        local_mask = ops.create_urban_mask(
+            urban_mask, roi_bbox, gdf_data.crs
+        )
+        gdf_data = ops.clip_to_mask(gdf_data, local_mask)
+
+    # 6. Spatial Aggregation (H3)
+    if geometry == "h3":
+        logger.info(f"    ⬢ Aggregating to H3 resolution {h3_res}...")
+
+        # A. Create target hex grid
+        gdf_hex = h3_ops.h3fy(gdf_data, resolution=h3_res, clip=True)
+
+        # B. Filter vars that actually exist in the dataframe
+        cols = merged_df.columns
+        valid_ext = [c for c in extensive_vars if c in cols]
+        valid_int = [c for c in intensive_vars if c in cols]
+
+        if not valid_ext and not valid_int:
+            logger.warning(
+                "    ⚠️ No aggregation rules found for loaded columns. "
+                "H3 output will only contain geometry."
+            )
 
         # C. Interpolate
-        gdf = geo_spatial.interpolate_area_weighted(
-            source_gdf=gdf,
-            target_gdf=gdf_h3,
-            extensive_vars=extensive_vars,
-            intensive_vars=intensive_vars,
+        interpolated = h3_ops.interpolate_area_weighted(
+            source_gdf=gdf_data,
+            target_gdf=gdf_hex,
+            extensive_vars=valid_ext,
+            intensive_vars=valid_int,
+            preserve_totals=True
         )
-        logger.info(f"       -> Interpolated data to {len(gdf)} hexagons.")
 
-    # 6. Final Polish
-    gdf["year"] = year
-    logger.info(f"✅ Loaded Census {year} for {len(muni_ids)} municipalities.")
+        # Clean up geometry column if duplicated during join
+        if "geometry" in interpolated.columns:
+            interpolated = interpolated.drop(columns="geometry")
+            
+        return gdf_hex.join(interpolated)
 
-    return gdf
+    return gdf_data

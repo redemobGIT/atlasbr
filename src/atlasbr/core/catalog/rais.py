@@ -32,6 +32,12 @@ CNAE_SECTOR_NAMES: Dict[str, str] = {
     "U": "Organizações Internacionais",
 }
 
+# Prefixes that require special handling or are often misclassified
+CNAE_PROBLEM_PREFIXES: List[str] = [
+    '35', '36', '38', '41', '42', '43', '49', '51', '562', 
+    '64', '78', '80', '81', '82', '84',
+]
+
 # --- Domain Models ---
 
 class RaisThemeSpec(BaseModel):
@@ -49,6 +55,19 @@ class RaisThemeSpec(BaseModel):
 
 RAIS_CATALOG: List[RaisThemeSpec] = [
     RaisThemeSpec(
+        year=2021, 
+        strategy="bd_table",
+        table_id="basedosdados.br_me_rais.microdados_estabelecimentos",
+        required_columns=[
+            "id_municipio", 
+            "tipo_estabelecimento", 
+            "cnae_2", 
+            "quantidade_vinculos_ativos", 
+            "cep", 
+            "natureza_juridica"
+        ]
+    ),
+    RaisThemeSpec(
         year=2022, 
         strategy="bd_table",
         table_id="basedosdados.br_me_rais.microdados_estabelecimentos",
@@ -61,8 +80,6 @@ RAIS_CATALOG: List[RaisThemeSpec] = [
             "natureza_juridica"
         ]
     ),
-    # TODO: Future placeholder for FTP strategy
-    # RaisThemeSpec(year=2022, strategy="ftp_csv", ...)
 ]
 
 def get_rais_spec(year: int, strategy: str) -> RaisThemeSpec:
