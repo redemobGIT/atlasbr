@@ -87,13 +87,10 @@ def load_census(
                 )
 
             # B. Apply Logic (Transformation Layer)
-            # This handles race imputation, residuals, and type enforcement.
-            df_clean = census_logic.standardize_census_dataframe(
-                df_raw, spec
-            )
+            # Use the public facade to standardize columns and types.
+            df_clean = census_logic.apply_census_logic(df_raw, spec)
 
             # C. Collect Metadata for Aggregation
-            # Assumes spec has these properties defined in Catalog
             if hasattr(spec, "extensive_vars"):
                 extensive_vars.extend(spec.extensive_vars)
             if hasattr(spec, "intensive_vars"):
@@ -114,6 +111,27 @@ def load_census(
     if merged_df.empty:
         raise RuntimeError("No census data found for requested criteria.")
 
+    # --- Post-Merge Fixes ---
+    # Calculate age_0_14 residual if missing (common in FTP 2022)
+    # This requires 'basic' (habitantes) and 'age' themes to be loaded.
+    age_cols = ["age_15_19", "age_20_64", "age_65p"]
+    has_partials = all(c in merged_df.columns for c in age_cols)
+    has_total = "habitantes" in merged_df.columns
+
+    if has_partials and has_total:
+        adult_sum = (
+            merged_df["age_15_19"].fillna(0) +
+            merged_df["age_20_64"].fillna(0) +
+            merged_df["age_65p"].fillna(0)
+        )
+        residual = (merged_df["habitantes"] - adult_sum).clip(lower=0)
+
+        if "age_0_14" in merged_df.columns:
+            merged_df["age_0_14"] = merged_df["age_0_14"].fillna(residual)
+        else:
+            merged_df["age_0_14"] = residual
+    # ------------------------
+
     # 3. Handle Geometry (Tracts)
     logger.info("    🗺️  Fetching Tract Geometries...")
 
@@ -121,8 +139,6 @@ def load_census(
     gdf_tracts = ops.prepare_tracts(raw_tracts)
 
     # 4. Join Data + Geometry
-    # We use inner join to ensure we only return geometries with data.
-    # However, we log if this results in significant data loss.
     initial_rows = len(merged_df)
     gdf_data = gdf_tracts.join(merged_df, how="inner")
     final_rows = len(gdf_data)
@@ -145,7 +161,7 @@ def load_census(
     if clip_urban:
         logger.info("    ✂️  Clipping to Urban Area...")
         urban_mask = footprint.fetch_urban_area_raw_gdf(year)
-        
+
         # Optimize: Create mask only for the ROI bounding box
         roi_bbox = gdf_data.total_bounds
         local_mask = ops.create_urban_mask(
@@ -183,7 +199,7 @@ def load_census(
         # Clean up geometry column if duplicated during join
         if "geometry" in interpolated.columns:
             interpolated = interpolated.drop(columns="geometry")
-            
+
         return gdf_hex.join(interpolated)
 
     return gdf_data

@@ -116,6 +116,7 @@ class CensusThemeSpec(BaseModel):
 
     # --- H3 Aggregation Metadata ---
     # Variables to SUM (counts) vs AVERAGE (densities/rates)
+    # These must use CANONICAL names (e.g. 'age_0_14'), not raw codes.
     extensive_vars: List[str] = Field(default_factory=list)
     intensive_vars: List[str] = Field(default_factory=list)
 
@@ -136,26 +137,27 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         table_id=BD_TABLE_BASIC_2010,
         required_columns=["v001", "v002"],
         column_map={
-            "id_setor_censitario": "id_setor_censitario",
+            "v001": "domicilios",
             "v002": "habitantes",
         },
-        extensive_vars=["habitantes"]
+        extensive_vars=["habitantes", "domicilios"]
     ),
     CensusThemeSpec(
         theme="income", year=2010, strategy="bd_table",
         table_id=BD_TABLE_BASIC_2010,
-        required_columns=["v005"],
+        required_columns=["v005", "v009"],
         column_map={
-            "id_setor_censitario": "id_setor_censitario",
-            "v005": "rendimento_medio",
+            "v005": "rendimento_medio_responsaveis",
+            "v009": "rendimento_medio",
         },
-        intensive_vars=["rendimento_medio"]
+        intensive_vars=["rendimento_medio", "rendimento_medio_responsaveis"]
     ),
     CensusThemeSpec(
         theme="age", year=2010, strategy="bd_table",
         table_id=BD_TABLE_AGE_2010,
         required_columns=["v022"] + _gen_cols("v", 35, 135),
-        extensive_vars=["v022"] + _gen_cols("v", 35, 135),
+        # Canonical outputs (derived in logic)
+        extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
     CensusThemeSpec(
         theme="race", year=2010, strategy="bd_table",
@@ -228,7 +230,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
             "cor_parda", "cor_indigena"
         ]
     ),
-    # [NEW] 2010 Age FTP
+    # 2010 Age FTP
     CensusThemeSpec(
         theme="age", year=2010, strategy="ftp_csv",
         ftp_resources=[
@@ -244,7 +246,8 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
             "V022": "v022",
             **{f"V{i:03d}": f"v{i:03d}" for i in range(35, 135)},
         },
-        extensive_vars=["v022"] + _gen_cols("v", 35, 135),
+        # Canonical outputs
+        extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
 
     # ==========================================
@@ -270,24 +273,22 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         required_columns=(
             ["pessoas", "V00644"] + _gen_cols("V", 645, 657, width=5)
         ),
-        extensive_vars=(
-            ["pessoas", "V00644"] + _gen_cols("V", 645, 657, width=5)
-        ),
+        # Canonical outputs
+        extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
     CensusThemeSpec(
         theme="race", year=2022, strategy="bd_table",
         table_id=BD_TABLE_SETOR_2022,
-        # Logic: 644-657 (Pop 15+) and 657-717 (Race breakdowns)
         required_columns=(
             ["pessoas"] +
             _gen_cols("V", 644, 657, width=5) +
             _gen_cols("V", 657, 717, width=5)
         ),
-        extensive_vars=(
-            ["pessoas"] +
-            _gen_cols("V", 644, 657, width=5) +
-            _gen_cols("V", 657, 717, width=5)
-        ),
+        # Canonical outputs
+        extensive_vars=[
+            "cor_branca", "cor_preta", "cor_amarela",
+            "cor_parda", "cor_indigena"
+        ]
     ),
 
     # --- 2022 FTP ---
@@ -356,26 +357,24 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
             "cor_parda", "cor_indigena"
         ]
     ),
-    # [NEW] 2022 Age FTP
+    # 2022 Age FTP
     CensusThemeSpec(
         theme="age", year=2022, strategy="ftp_csv",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=URL_AGE_2022,
-                member_glob="Agregados_por_setores_alfabetizacao_BR.csv",
+                member_glob="Agregados_por_setores_alfabetizacao_*.csv",
                 id_col="CD_SETOR",
             )
         ],
-        # Explicitly excluding V00748 (literacy) to avoid double counting
+        # Only raw age vars, EXCLUDING literacy (V00748)
         required_columns=[
             "V00644", "V00649", "V00654", "V00659", "V00664",
             "V00669", "V00674", "V00679"
         ],
         column_map={"CD_SETOR": "id_setor_censitario"},
-        extensive_vars=[
-            "V00644", "V00649", "V00654", "V00659", "V00664",
-            "V00669", "V00674", "V00679"
-        ],
+        # Canonical outputs
+        extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
 ]
 
