@@ -13,7 +13,7 @@ def test_load_rais_basic(mock_rais_df):
         df = load_rais(
             places=["Mock City"],
             year=2022,
-            strategy="bd_table",
+            strategy="bd",
             gcp_billing="test-project",
             geocode=False
         )

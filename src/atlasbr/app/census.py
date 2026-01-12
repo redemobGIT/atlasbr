@@ -21,7 +21,7 @@ def load_census(
     *,
     year: int = 2010,
     themes: List[str] = None,
-    strategy: str = "bd_table",
+    strategy: str = bd,
     geometry: str = "tract",  # 'tract' or 'h3'
     h3_res: int = 8,
     gcp_billing: Optional[str] = None,
@@ -52,7 +52,7 @@ def load_census(
 
     # 1. Resolve Inputs and Billing
     project_id = (
-        resolve_billing_id(gcp_billing) if strategy == "bd_table" else None
+        resolve_billing_id(gcp_billing) if strategy == "bd" else None
     )
     muni_ids = resolver.resolve_places_to_ids(places)
 
@@ -73,12 +73,12 @@ def load_census(
 
         try:
             # A. Fetch Raw Data
-            if spec.strategy == "bd_table":
+            if spec.strategy == "bd":
                 from atlasbr.infra.adapters import census_bd
                 df_raw = census_bd.fetch_census_bd(
                     spec, munis=muni_ids, billing_id=project_id
                 )
-            elif spec.strategy == "ftp_csv":
+            elif spec.strategy == "ftp":
                 from atlasbr.infra.adapters import census_ftp
                 df_raw = census_ftp.fetch_census_ftp(spec, munis=muni_ids)
             else:
@@ -133,7 +133,7 @@ def load_census(
     # ------------------------
 
     # 3. Handle Geometry (Tracts)
-    logger.info("    🗺️  Fetching Tract Geometries...")
+    logger.info("    🗺️  Fetching Tract Geometries...") 
 
     raw_tracts = tracts.fetch_tracts_raw(munis=muni_ids, year=year)
     gdf_tracts = ops.prepare_tracts(raw_tracts)

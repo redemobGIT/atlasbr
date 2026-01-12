@@ -8,7 +8,7 @@ It is strategy-aware: handles raw BigQuery columns differently from FTP CSVs.
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Callable, Any
+from typing import Dict, Callable, Any
 
 # --- Constants ---
 
@@ -38,6 +38,7 @@ def _sum_cols(
 
     return df[valid_cols].sum(axis=1)
 
+
 # --- 2010 Transformers ---
 
 
@@ -58,17 +59,23 @@ def _handle_age_2010(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     """
     Aggregates raw 2010 age columns into standard brackets.
     """
-    df = df.fillna(0)
-
-    # Calculate brackets
+    # Fix: Create a fresh DataFrame to avoid 'highly fragmented' warning
+    # instead of appending columns to the massive input df.
+    df_calc = df.fillna(0)
+    
+    data = {}
+    
     # 0-14: v022 (Total <1y) + range(35, 49)
-    df["age_0_14"] = df.get("v022", 0) + _sum_cols(df, "v", 35, 49, width=3)
+    data["age_0_14"] = (
+        df_calc.get("v022", 0) + 
+        _sum_cols(df_calc, "v", 35, 49, width=3)
+    )
 
-    df["age_15_19"] = _sum_cols(df, "v", 49, 54, width=3)
-    df["age_20_64"] = _sum_cols(df, "v", 54, 99, width=3)
-    df["age_65p"] = _sum_cols(df, "v", 99, 135, width=3)
+    data["age_15_19"] = _sum_cols(df_calc, "v", 49, 54, width=3)
+    data["age_20_64"] = _sum_cols(df_calc, "v", 54, 99, width=3)
+    data["age_65p"] = _sum_cols(df_calc, "v", 99, 135, width=3)
 
-    return df[["age_0_14", "age_15_19", "age_20_64", "age_65p"]]
+    return pd.DataFrame(data, index=df.index)
 
 
 def _handle_race_2010(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
@@ -85,11 +92,12 @@ def _handle_race_2010(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     cols = [c for c in mapping.values() if c in df.columns]
     return df[cols]
 
+
 # --- 2022 Transformers ---
 
 
 def _handle_basic_2022(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
-    if strategy == "bd_table":
+    if strategy == "bd":
         return df.rename(columns={"pessoas": "habitantes"})
     # FTP already mapped via Catalog
     return df
@@ -110,24 +118,23 @@ def _handle_age_2022(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     for col in [c for c in df.columns if c.startswith("V")]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+    # Dictionary for output columns (Avoids fragmentation)
+    out_data = {}
+    total_col = None
+
     # 2. Strategy Branching
-    if strategy == "bd_table":
+    if strategy == "bd":
         # Base dos Dados (Preliminar Table)
-        # V00644 (15-19), V00645..654 (20-64), V00654..657 (65+)
-        df["age_15_19"] = df.get("V00644", 0)
-        df["age_20_64"] = _sum_cols(df, "V", 645, 654, width=5)
-        df["age_65p"] = _sum_cols(df, "V", 654, 657, width=5)
+        out_data["age_15_19"] = df.get("V00644", 0)
+        out_data["age_20_64"] = _sum_cols(df, "V", 645, 654, width=5)
+        out_data["age_65p"] = _sum_cols(df, "V", 654, 657, width=5)
         total_col = "pessoas"
 
-    elif strategy == "ftp_csv":
+    elif strategy == "ftp":
         # FTP (Alfabetizacao Table)
-        # V00644 (15-19)
-        # V00649..674 (20-64, step 5)
-        # V00679 (65+)
-        df["age_15_19"] = df.get("V00644", 0)
-        df["age_20_64"] = _sum_cols(df, "V", 649, 675, width=5, step=5)
-        df["age_65p"] = df.get("V00679", 0)
-        # FTP payloads are thematic; total pop might not be in this file
+        out_data["age_15_19"] = df.get("V00644", 0)
+        out_data["age_20_64"] = _sum_cols(df, "V", 649, 675, width=5, step=5)
+        out_data["age_65p"] = df.get("V00679", 0)
         total_col = "habitantes" if "habitantes" in df.columns else None
     else:
         return df
@@ -136,14 +143,19 @@ def _handle_age_2022(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     # Only calculate if we explicitly have a total population column.
     if total_col and total_col in df.columns:
         adults_elderly = (
-            df["age_15_19"] + df["age_20_64"] + df["age_65p"]
+            out_data["age_15_19"] + 
+            out_data["age_20_64"] + 
+            out_data["age_65p"]
         )
-        df["age_0_14"] = (df[total_col] - adults_elderly).clip(lower=0)
+        out_data["age_0_14"] = (df[total_col] - adults_elderly).clip(lower=0)
     else:
         # App layer must derive this after merging with Basic theme
-        df["age_0_14"] = np.nan
+        out_data["age_0_14"] = np.nan
 
-    return df[["age_0_14", "age_15_19", "age_20_64", "age_65p"]]
+    # Create fresh DataFrame
+    return pd.DataFrame(out_data, index=df.index)[
+        ["age_0_14", "age_15_19", "age_20_64", "age_65p"]
+    ]
 
 
 def _handle_race_2022(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
@@ -151,7 +163,7 @@ def _handle_race_2022(df: pd.DataFrame, strategy: str) -> pd.DataFrame:
     Processes Race data for 2022.
     """
     # PATH A: FTP Strategy (Simple Aggregates)
-    if strategy == "ftp_csv":
+    if strategy == "ftp":
         expected_cols = [f"cor_{r}" for r in CENSO_RACES]
         return df[[c for c in expected_cols if c in df.columns]]
 

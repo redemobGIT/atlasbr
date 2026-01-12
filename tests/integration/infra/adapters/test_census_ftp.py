@@ -36,7 +36,7 @@ def spec_mock():
     return CensusThemeSpec(
         theme="test_theme",
         year=2099,
-        strategy="ftp_csv",
+        strategy="ftp",
         url="http://fake-ibge.com/dados.zip",
         csv_sep=";",
         csv_decimal=",",

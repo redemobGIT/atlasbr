@@ -16,7 +16,7 @@ def test_load_census_signature_defaults(mock_tracts_gdf, mock_urban_gdf, mock_ce
         # Test BD strategy
         gdf = load_census(
             places=["Mock City"],
-            strategy="bd_table",
+            strategy="bd",
             themes=["basic"],
             gcp_billing="test-project"
         )
@@ -38,7 +38,7 @@ def test_load_census_ftp_strategy(mock_tracts_gdf, mock_urban_gdf, mock_census_d
          
         gdf = load_census(
             places=["Mock City"],
-            strategy="ftp_csv",
+            strategy="ftp",
             themes=["basic"]
         )
         

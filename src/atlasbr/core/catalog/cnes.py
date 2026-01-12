@@ -4,10 +4,14 @@ AtlasBR - Core Catalog for CNES (Healthcare) Data.
 Defines infrastructure groups, unit codes, and the fetching contract.
 """
 
-from typing import Literal, List, Dict
+from __future__ import annotations
+
+from typing import Dict, List, Literal, Optional
+from warnings import warn
+
 from pydantic import BaseModel, ConfigDict
 
-# --- Constants (Taxonomy) ---
+CnesStrategy = Literal["bd"]
 
 CNES_UNIT_CODES: Dict[str, str] = {
     "1": "Hospital Geral",
@@ -93,18 +97,22 @@ CNES_INFRASTRUCTURE_GROUPS: Dict[str, List[str]] = {
     ],
 }
 
-# --- Domain Spec ---
 
 class CnesThemeSpec(BaseModel):
     model_config = ConfigDict(frozen=True)
-    
-    year: int
-    month: int
-    strategy: Literal["bd_complex_sql"]
-    
-    # Table identifiers
+
+    strategy: CnesStrategy
     table_estab: str = "basedosdados.br_ms_cnes.estabelecimento"
     table_prof: str = "basedosdados.br_ms_cnes.profissional"
+    year: Optional[int] = None
+    month: Optional[int] = None
+
 
 def get_cnes_spec(year: int, month: int) -> CnesThemeSpec:
-    return CnesThemeSpec(year=year, month=month, strategy="bd_complex_sql")
+    warn(
+        "CNES catalog is time-agnostic for BD; pass year/month to "
+        "load/fetch functions for filtering.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return CnesThemeSpec(strategy="bd")

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, ConfigDict
 # Type Definitions
 # ---------------------------------------------------------------------
 
-CensusStrategy: TypeAlias = Literal["bd_table", "ftp_csv"]
+CensusStrategy: TypeAlias = Literal[bd, "ftp"]
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -133,7 +133,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
 
     # --- 2010 BD ---
     CensusThemeSpec(
-        theme="basic", year=2010, strategy="bd_table",
+        theme="basic", year=2010, strategy="bd",
         table_id=BD_TABLE_BASIC_2010,
         required_columns=["v001", "v002"],
         column_map={
@@ -143,7 +143,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         extensive_vars=["habitantes", "domicilios"]
     ),
     CensusThemeSpec(
-        theme="income", year=2010, strategy="bd_table",
+        theme="income", year=2010, strategy="bd",
         table_id=BD_TABLE_BASIC_2010,
         required_columns=["v005", "v009"],
         column_map={
@@ -153,18 +153,17 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         intensive_vars=["rendimento_medio", "rendimento_medio_responsaveis"]
     ),
     CensusThemeSpec(
-        theme="age", year=2010, strategy="bd_table",
+        theme="age", year=2010, strategy="bd",
         table_id=BD_TABLE_AGE_2010,
         required_columns=["v022"] + _gen_cols("v", 35, 135),
         # Canonical outputs (derived in logic)
         extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
     CensusThemeSpec(
-        theme="race", year=2010, strategy="bd_table",
+        theme="race", year=2010, strategy="bd",
         table_id=BD_TABLE_RACE_2010,
         required_columns=["v002", "v003", "v004", "v005", "v006"],
         column_map={
-            "id_setor_censitario": "id_setor_censitario",
             "v002": "cor_branca",
             "v003": "cor_preta",
             "v004": "cor_amarela",
@@ -179,7 +178,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
 
     # --- 2010 FTP ---
     CensusThemeSpec(
-        theme="basic", year=2010, strategy="ftp_csv",
+        theme="basic", year=2010, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=FTP_TEMPLATE_2010,
@@ -194,7 +193,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         extensive_vars=["habitantes"]
     ),
     CensusThemeSpec(
-        theme="income", year=2010, strategy="ftp_csv",
+        theme="income", year=2010, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=FTP_TEMPLATE_2010,
@@ -204,12 +203,13 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         ],
         column_map={
             "Cod_setor": "id_setor_censitario",
-            "V005": "rendimento_medio"
+            "V005": "v005",
+            "V009": "v009",
         },
-        intensive_vars=["rendimento_medio"]
+        intensive_vars=["rendimento_medio", "rendimento_medio_responsaveis"]
     ),
     CensusThemeSpec(
-        theme="race", year=2010, strategy="ftp_csv",
+        theme="race", year=2010, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=FTP_TEMPLATE_2010,
@@ -232,10 +232,10 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
     ),
     # 2010 Age FTP
     CensusThemeSpec(
-        theme="age", year=2010, strategy="ftp_csv",
+        theme="age", year=2010, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
-                url_template=FTP_TEMPLATE_2010.format(stem="Pessoa11"),
+                url_template=FTP_TEMPLATE_2010,
                 member_glob="Pessoa11_*.csv",
                 id_col="Cod_setor"
             )
@@ -256,18 +256,18 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
 
     # --- 2022 BD ---
     CensusThemeSpec(
-        theme="basic", year=2022, strategy="bd_table",
+        theme="basic", year=2022, strategy="bd",
         table_id=BD_TABLE_SETOR_2022,
         required_columns=["domicilios", "pessoas"],
         column_map={
             "id_setor_censitario": "id_setor_censitario",
             "pessoas": "habitantes",
-            "domicilios": "total_domicilios"
+            "domicilios": "domicilios"
         },
-        extensive_vars=["habitantes", "total_domicilios"]
+        extensive_vars=["habitantes", "domicilios"]
     ),
     CensusThemeSpec(
-        theme="age", year=2022, strategy="bd_table",
+        theme="age", year=2022, strategy="bd",
         table_id=BD_TABLE_SETOR_2022,
         # Logic: Pessoas (Total) + V00644 (15-19) + 20-64 block + 65+ block
         required_columns=(
@@ -277,7 +277,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         extensive_vars=["age_0_14", "age_15_19", "age_20_64", "age_65p"],
     ),
     CensusThemeSpec(
-        theme="race", year=2022, strategy="bd_table",
+        theme="race", year=2022, strategy="bd",
         table_id=BD_TABLE_SETOR_2022,
         required_columns=(
             ["pessoas"] +
@@ -293,7 +293,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
 
     # --- 2022 FTP ---
     CensusThemeSpec(
-        theme="basic", year=2022, strategy="ftp_csv",
+        theme="basic", year=2022, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=URL_BASIC_2022,
@@ -304,24 +304,23 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         column_map={
             "CD_SETOR": "id_setor_censitario",
             "v0001": "habitantes",
-            "v0002": "total_domicilios",
-            "v0003": "domicilios_particulares",
-            "v0004": "domicilios_coletivos",
-            "v0005": "media_moradores_dom_ocupados",
-            "v0006": "pct_domicilios_imputados",
-            "v0007": "domicilios_particulares_ocupados",
+            "v0002": "domicilios",
+            # "v0003": "domicilios_particulares",
+            # "v0004": "domicilios_coletivos",
+            # "v0005": "media_moradores_dom_ocupados",
+            # "v0006": "pct_domicilios_imputados",
+            # "v0007": "domicilios_particulares_ocupados",
+            # TODO: consider adding these variables above later
         },
         extensive_vars=[
-            "habitantes", "total_domicilios",
-            "domicilios_particulares", "domicilios_coletivos",
-            "domicilios_particulares_ocupados"
+            "habitantes",
+            "domicilios",
+            #"domicilios_particulares", "domicilios_coletivos",
+            #"domicilios_particulares_ocupados"
         ],
-        intensive_vars=[
-            "media_moradores_dom_ocupados", "pct_domicilios_imputados"
-        ]
     ),
     CensusThemeSpec(
-        theme="income", year=2022, strategy="ftp_csv",
+        theme="income", year=2022, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=URL_INCOME_2022,
@@ -331,12 +330,12 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         ],
         column_map={
             "CD_SETOR": "id_setor_censitario",
-            "V06004": "rendimento_medio"
+            "V06004": "rendimento_medio_responsaveis",
         },
-        intensive_vars=["rendimento_medio"]
+        intensive_vars=["rendimento_medio_responsaveis"]
     ),
     CensusThemeSpec(
-        theme="race", year=2022, strategy="ftp_csv",
+        theme="race", year=2022, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=URL_RACE_2022,
@@ -359,7 +358,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
     ),
     # 2022 Age FTP
     CensusThemeSpec(
-        theme="age", year=2022, strategy="ftp_csv",
+        theme="age", year=2022, strategy="ftp",
         ftp_resources=[
             FtpResourceSpec(
                 url_template=URL_AGE_2022,
@@ -370,7 +369,7 @@ CENSUS_CATALOG: List[CensusThemeSpec] = [
         # Only raw age vars, EXCLUDING literacy (V00748)
         required_columns=[
             "V00644", "V00649", "V00654", "V00659", "V00664",
-            "V00669", "V00674", "V00679"
+            "V00669", "V00674", "V00679", "CD_SETOR"
         ],
         column_map={"CD_SETOR": "id_setor_censitario"},
         # Canonical outputs
