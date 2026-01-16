@@ -1,193 +1,109 @@
-"""
-AtlasBR - Map Generators (Interactive Choropleths).
-"""
-from typing import List, Dict, Tuple, Optional, Any
+from __future__ import annotations
 
-import numpy as np
-import pandas as pd
+import math
+from typing import Optional, Tuple
+
 import geopandas as gpd
-import mapclassify as mc
-import plotly.express.colors as colors
-import plotly.graph_objects as go
+import matplotlib.axes
 
-from .utils import visibility_mask, labels_from_bins, prepare_geodata
-from .styles import SLIDER_STYLE, DROPDOWN_STYLE, build_coloraxis
 
-def _calculate_variable_specs(
-    gdf: gpd.GeoDataFrame,
-    vars_to_show: List[str],
-    id_col: str,
-    year_col: str,
-    locs: List[str],
-    years: List[int],
-    clip_q: Optional[Tuple[float, float]],
-    log_color: bool,
-    scheme: Optional[str],
-    k: int,
-    scheme_kwargs: Optional[Dict],
-    colorscale: str,
-) -> Tuple[Dict, Dict]:
-    
-    var_specs = {v: {} for v in vars_to_show}
-    data_cache = {v: {} for v in vars_to_show}
+def to_local_utm(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    if gdf.crs is None:
+        raise ValueError("GeoDataFrame must have a CRS.")
+    gdf_ll = gdf.to_crs(epsg=4326)
+    lon = float(gdf_ll.geometry.x.mean())
+    lat = float(gdf_ll.geometry.y.mean())
+    epsg = _utm_epsg(lon, lat)
+    return gdf_ll.to_crs(epsg=epsg)
 
-    for var in vars_to_show:
-        pivot_df = gdf.pivot(index=id_col, columns=year_col, values=var)
-        pivot_df.columns = pivot_df.columns.astype(int)
-        pivot_df = pivot_df.reindex(locs)
 
-        for yr in years:
-            s_raw = pd.to_numeric(pivot_df.get(yr), errors="coerce")
+def add_basemap(ax: matplotlib.axes.Axes, crs, source: str) -> None:
+    try:
+        import contextily as ctx
+    except ImportError as exc:
+        raise ImportError(
+            "Basemaps require 'contextily'. Install via `pip install atlasbr[viz]`."
+        ) from exc
 
-            if clip_q:
-                lo, hi = s_raw.quantile(list(clip_q))
-                s_clip = s_raw.clip(lo, hi)
-            else:
-                s_clip = s_raw.copy()
+    provider = _resolve_provider(ctx, source)
+    ctx.add_basemap(ax, crs=crs, source=provider)
 
-            if log_color:
-                z_cont = np.log10(np.clip(s_clip.to_numpy(dtype=float), 1e-12, None))
-            else:
-                z_cont = s_clip.to_numpy(dtype=float)
 
-            finite_mask = np.isfinite(z_cont)
-            finite_vals = z_cont[finite_mask]
-            
-            spec = {"log_color": log_color, "title": var}
+def add_north_arrow(ax: matplotlib.axes.Axes) -> None:
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    dx = x1 - x0
+    dy = y1 - y0
 
-            if scheme and finite_vals.size >= 2 and (mc is not None):
-                nunique = np.unique(finite_vals).size
-                k_eff = max(1, min(k, nunique))
-                if k_eff == 1:
-                    cmin = float(np.nanmin(finite_vals)) if finite_vals.size else 0.0
-                    cmax = cmin + 1e-9
-                    data_cache[var][yr] = {"raw": s_raw.to_numpy(), "z": z_cont}
-                    spec.update({"type": "continuous", "cmin": cmin, "cmax": cmax, "colorscale": colorscale})
-                else:
-                    klass = mc.classify(finite_vals, scheme=scheme, k=k_eff, **(scheme_kwargs or {}))
-                    bins = np.asarray(klass.bins, dtype=float)
-                    z_idx = np.full_like(z_cont, fill_value=np.nan, dtype=float)
-                    z_idx[finite_mask] = np.digitize(finite_vals, bins=bins, right=True).astype(float)
-                    
-                    labels = labels_from_bins(bins)
-                    positions = np.linspace(0, 1, k_eff)
-                    disc_colors = colors.sample_colorscale(colorscale, positions)
-                    spec.update({
-                        "type": "discrete",
-                        "k": k_eff,
-                        "labels": labels,
-                        "colorscale": [[i / max(1, (k_eff - 1)), c] for i, c in enumerate(disc_colors)],
-                    })
-                    data_cache[var][yr] = {"raw": s_raw.to_numpy(), "z": z_idx}
-            else:
-                if finite_vals.size == 0:
-                    cmin, cmax = 0.0, 1.0
-                else:
-                    cmin = float(np.nanmin(finite_vals))
-                    cmax = float(np.nanmax(finite_vals))
-                    if not np.isfinite(cmin): cmin = 0.0
-                    if not np.isfinite(cmax): cmax = cmin + 1.0
-                    if cmin == cmax: cmax = cmin + 1e-9
-                spec.update({"type": "continuous", "cmin": cmin, "cmax": cmax, "colorscale": colorscale})
-                data_cache[var][yr] = {"raw": s_raw.to_numpy(), "z": z_cont}
-
-            var_specs[var][yr] = spec
-
-    return data_cache, var_specs
-
-def plot_interactive_map(
-    gdf: gpd.GeoDataFrame,
-    *,
-    year_col: str = "year",
-    id_col: str = "hex_id",
-    vars_to_show: List[str] = ("habitantes",),
-    map_height: int = 700,
-    tiles: str = "open-street-map",
-    colorscale: str = "RdYlBu",
-    opacity: float = 0.7,
-    clip_q: Optional[Tuple[float, float]] = None,
-    log_color: bool = False,
-    mapbox_zoom: Optional[float] = None,
-    title_prefix: str = "Mapa | ",
-    scheme: Optional[str] = None,
-    k: int = 5,
-    scheme_kwargs: Optional[Dict] = None,
-) -> go.Figure:
-    """
-    Creates an interactive choropleth map with a year slider and a
-    variable dropdown.
-    """
-    gdf_proc, geojson, locs, years = prepare_geodata(gdf, id_col, year_col, list(vars_to_show))
-    data_cache, var_specs = _calculate_variable_specs(
-        gdf_proc, list(vars_to_show), id_col, year_col, locs, years,
-        clip_q, log_color, scheme, k, scheme_kwargs, colorscale,
+    x = x0 + 0.06 * dx
+    y = y1 - 0.08 * dy
+    ax.annotate(
+        "N",
+        xy=(x, y),
+        xytext=(x, y - 0.06 * dy),
+        arrowprops={"arrowstyle": "-|>", "lw": 1.2},
+        ha="center",
+        va="center",
+        fontsize=11,
+        fontweight="bold",
     )
 
-    fig = go.Figure()
-    num_vars = len(vars_to_show)
-    num_years = len(years)
 
-    axis_name = {}
-    axis_counter = 1
-    for i, var in enumerate(vars_to_show):
-        for j, yr in enumerate(years):
-            name = f"coloraxis{axis_counter}"
-            axis_name[(i, j)] = name
-            fig.layout[name] = build_coloraxis(var_specs[var][yr])
-            axis_counter += 1
+def add_scale_bar(ax: matplotlib.axes.Axes) -> None:
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    width = x1 - x0
+    height = y1 - y0
 
-    for i, var in enumerate(vars_to_show):
-        for j, yr in enumerate(years):
-            is_first = (i == 0 and j == 0)
-            fig.add_trace(
-                go.Choroplethmap(
-                    locations=locs,
-                    z=data_cache[var][yr]["z"],
-                    customdata=data_cache[var][yr]["raw"],
-                    geojson=geojson,
-                    featureidkey=f"properties.{id_col}",
-                    coloraxis=axis_name[(i, j)],
-                    marker_line_width=0,
-                    visible=is_first,
-                    hovertemplate=(f"%{{location}}<br>{var} ({yr}): %{{customdata:,.0f}}<extra></extra>"),
-                )
-            )
+    target = width * 0.22
+    length = _nice_length(target)
 
-    sliders_by_var = {}
-    for i, var in enumerate(vars_to_show):
-        steps = []
-        for j, yr in enumerate(years):
-            vis = visibility_mask(num_vars, num_years, i, j)
-            steps.append(dict(
-                label=str(yr),
-                method="update",
-                args=[{"visible": vis}, {"title": f"{title_prefix}{var} — {yr}"}],
-            ))
-        sliders_by_var[var] = [dict(**SLIDER_STYLE, active=0, steps=steps)]
+    x = x0 + 0.06 * width
+    y = y0 + 0.06 * height
 
-    dropdown_buttons = []
-    for i, var in enumerate(vars_to_show):
-        vis = visibility_mask(num_vars, num_years, i, 0)
-        dropdown_buttons.append(dict(
-            label=var,
-            method="update",
-            args=[
-                {"visible": vis},
-                {"sliders": sliders_by_var[var], "title": f"{title_prefix}{var} — {years[0]}"}
-            ],
-        ))
-
-    xmin, ymin, xmax, ymax = gdf_proc.total_bounds
-    fig.update_layout(
-        height=map_height,
-        title=f"{title_prefix}{vars_to_show[0]} — {years[0]}",
-        map_style=tiles,
-        map_center={"lon": (xmin + xmax) / 2, "lat": (ymin + ymax) / 2},
-        map_zoom=mapbox_zoom if mapbox_zoom is not None else 10,
-        updatemenus=[dict(**DROPDOWN_STYLE, active=0, buttons=dropdown_buttons)],
-        sliders=sliders_by_var[vars_to_show[0]],
-        margin=dict(l=0, r=0, t=80, b=0),
-        showlegend=False,
+    ax.plot([x, x + length], [y, y], lw=3, solid_capstyle="butt")
+    ax.text(
+        x + length / 2,
+        y + 0.015 * height,
+        _format_length(length),
+        ha="center",
+        va="bottom",
+        fontsize=9,
     )
-    fig.update_traces(marker_opacity=opacity)
-    return fig
+
+
+def _utm_epsg(lon: float, lat: float) -> int:
+    zone = int((lon + 180.0) // 6.0) + 1
+    return 32600 + zone if lat >= 0 else 32700 + zone
+
+
+def _nice_length(meters: float) -> float:
+    if meters <= 0:
+        return 0.0
+    exp = math.floor(math.log10(meters))
+    base = meters / (10**exp)
+    for m in (1, 2, 5, 10):
+        if base <= m:
+            return float(m * (10**exp))
+    return float(10 * (10**exp))
+
+
+def _format_length(meters: float) -> str:
+    if meters >= 1000:
+        km = meters / 1000.0
+        if km.is_integer():
+            return f"{int(km)} km"
+        return f"{km:.1f} km"
+    return f"{int(meters):,} m"
+
+
+def _resolve_provider(ctx, source: str):
+    if not hasattr(ctx, "providers"):
+        return None
+    parts = source.split(".")
+    node = ctx.providers
+    for p in parts:
+        if not hasattr(node, p):
+            raise ValueError(f"Unknown basemap source: {source!r}")
+        node = getattr(node, p)
+    return node

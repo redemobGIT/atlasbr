@@ -21,7 +21,7 @@ def load_census(
     *,
     year: int = 2010,
     themes: List[str] = None,
-    strategy: str = bd,
+    strategy: str = "bd",
     geometry: str = "tract",  # 'tract' or 'h3'
     h3_res: int = 8,
     gcp_billing: Optional[str] = None,

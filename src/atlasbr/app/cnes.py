@@ -10,6 +10,7 @@ import geopandas as gpd
 import pandas as pd
 
 from atlasbr.core.catalog.cnes import get_cnes_spec
+from atlasbr.core.geo.utils import to_local_utm
 from atlasbr.core.logic import geocoding
 from atlasbr.core.types import PlaceInput
 from atlasbr.infra.geo import resolver
@@ -33,8 +34,6 @@ def load_cnes(
     df_cnes = cnes_bd.fetch_cnes_from_bd(
         spec,
         munis=muni_ids,
-        year=year,
-        month=month,
         billing_id=project_id,
     )
 
@@ -53,7 +52,8 @@ def load_cnes(
             data_cep_col="cep",
         )
         logger.info(f"✅ Loaded {len(gdf_cnes)} CNES units (Geolocated).")
-        return gdf_cnes
+        return to_local_utm(gdf_cnes)
 
     logger.info(f"✅ Loaded {len(df_cnes)} CNES units (Tabular).")
+    
     return df_cnes

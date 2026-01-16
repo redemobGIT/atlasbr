@@ -18,7 +18,7 @@ class SchoolsThemeSpec(BaseModel):
     strategy: SchoolsStrategy
     table_directory: str = "basedosdados.br_bd_diretorios_brasil.escola"
     table_census: str = "basedosdados.br_inep_censo_escolar.escola"
-    year: Optional[int] = None
+    year: Optional[int] = None # TODO: given that the catalog is time-agnostic for BD, should we keep year here?
 
 
 def get_schools_spec(year: int) -> SchoolsThemeSpec:
@@ -28,4 +28,4 @@ def get_schools_spec(year: int) -> SchoolsThemeSpec:
         DeprecationWarning,
         stacklevel=2,
     )
-    return SchoolsThemeSpec(strategy="bd")
+    return SchoolsThemeSpec(strategy="bd", year=year)

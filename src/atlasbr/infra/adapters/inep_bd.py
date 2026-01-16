@@ -16,7 +16,6 @@ def fetch_schools_from_bd(
     spec: SchoolsThemeSpec,
     *,
     munis: Iterable[int],
-    year: int,
     billing_id: str | None = None,
 ) -> pd.DataFrame:
     try:
@@ -72,7 +71,7 @@ def fetch_schools_from_bd(
         "          ) AS num\n"
         "        ), 0) AS quantidade_profissional\n"
         f"    FROM `{spec.table_census}` AS t\n"
-        f"    WHERE t.ano = {int(year)}\n"
+        f"    WHERE t.ano = {int(spec.year)}\n"
         f"      AND t.id_municipio IN ({munis_sql})\n"
         "      AND t.regular = 1\n"
         "      AND t.tipo_situacao_funcionamento = '1'\n"
@@ -95,7 +94,7 @@ def fetch_schools_from_bd(
         "JOIN cen AS c USING (id_escola)"
     )
 
-    logger.info(f"    🎓 Fetching Schools {year} from Base dos Dados...")
+    logger.info(f"    🎓 Fetching Schools {spec.year} from Base dos Dados...")
     return bd.read_sql(query, billing_project_id=project_id)
 
 

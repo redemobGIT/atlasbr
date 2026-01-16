@@ -10,6 +10,7 @@ import geopandas as gpd
 import pandas as pd
 
 from atlasbr.core.catalog.inep import get_schools_spec
+from atlasbr.core.geo.utils import to_local_utm
 from atlasbr.core.logic import geocoding
 from atlasbr.core.types import PlaceInput
 from atlasbr.infra.geo import resolver
@@ -32,7 +33,6 @@ def load_schools(
     df_schools = inep_bd.fetch_schools_from_bd(
         spec,
         munis=muni_ids,
-        year=year,
         billing_id=project_id,
     )
 
@@ -44,7 +44,7 @@ def load_schools(
             lon_col="longitude",
         )
         logger.info(f"✅ Loaded {len(gdf_schools)} schools.")
-        return gdf_schools
+        return to_local_utm(gdf_schools)
 
     logger.info(f"✅ Loaded {len(df_schools)} schools (Tabular).")
     return df_schools

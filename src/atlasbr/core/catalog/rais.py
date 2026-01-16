@@ -11,7 +11,7 @@ from warnings import warn
 
 from pydantic import BaseModel, ConfigDict, Field
 
-RaisStrategy = Literal[bd, "ftp"]
+RaisStrategy = Literal["bd", "ftp"]
 
 CNAE_SECTIONS_DEF: List[Tuple[str, int, int]] = [
     ("A", 1, 3),

@@ -20,8 +20,6 @@ def fetch_cnes_from_bd(
     spec: CnesThemeSpec,
     *,
     munis: Iterable[int],
-    year: int,
-    month: int,
     billing_id: str | None = None,
 ) -> pd.DataFrame:
     try:
@@ -64,8 +62,8 @@ def fetch_cnes_from_bd(
         f"        {infra_sql}\n"
         f"    FROM `{spec.table_estab}` AS e\n"
         f"    WHERE e.id_municipio IN ({munis_sql})\n"
-        f"      AND e.ano = {int(year)}\n"
-        f"      AND e.mes = {int(month)}\n"
+        f"      AND e.ano = {int(spec.year)}\n"
+        f"      AND e.mes = {int(spec.month)}\n"
         f"      AND e.tipo_unidade IN ({units_sql})\n"
         "      AND e.tipo_pessoa = '3'\n"
         "),\n"
@@ -86,8 +84,8 @@ def fetch_cnes_from_bd(
         "      )\n"
         "    ) AS num ON TRUE\n"
         f"    WHERE t.id_municipio IN ({munis_sql})\n"
-        f"      AND t.ano = {int(year)}\n"
-        f"      AND t.mes = {int(month)}\n"
+        f"      AND t.ano = {int(spec.year)}\n"
+        f"      AND t.mes = {int(spec.month)}\n"
         "    GROUP BY t.id_estabelecimento_cnes\n"
         ")\n"
         "SELECT\n"
@@ -98,7 +96,7 @@ def fetch_cnes_from_bd(
         "LEFT JOIN workers AS w USING (id_estabelecimento_cnes)"
     )
 
-    logger.info(f"    🏥 Fetching CNES {month}/{year} from Base dos Dados...")
+    logger.info(f"    🏥 Fetching CNES {spec.month}/{spec.year} from Base dos Dados...")
     return bd.read_sql(query, billing_project_id=project_id)
 
 

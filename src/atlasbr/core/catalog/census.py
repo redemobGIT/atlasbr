@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, ConfigDict
 # Type Definitions
 # ---------------------------------------------------------------------
 
-CensusStrategy: TypeAlias = Literal[bd, "ftp"]
+CensusStrategy: TypeAlias = Literal["bd", "ftp"]
 
 # ---------------------------------------------------------------------
 # Helpers

@@ -2,8 +2,7 @@
 AtlasBR - Core Geo Operations (Clipping & Masking).
 """
 import geopandas as gpd
-import pandas as pd
-from typing import Tuple, Union, Any
+from typing import Tuple, Any
 from atlasbr.core.geo.utils import to_local_utm, clean_geometries
 from atlasbr.settings import logger
 

@@ -19,6 +19,8 @@ def _fix_encoding(text: Any) -> str:
     Example: 'NiterÃ³i' -> 'Niterói'
     """
     if not isinstance(text, str):
+        # TODO: this ends up being a safeguard, but non string
+        # are already handled in resolve_places_to_ids. Consider removing.
         return str(text)
     try:
         # Check if it looks like UTF-8 bytes decoded as cp1252/latin1
@@ -58,6 +60,7 @@ def _fetch_muni_metadata() -> pd.DataFrame:
         import geobr
     except ImportError as e:
         raise ImportError(
+            # TODO: this path to pip install seems wrong
             "Place resolution by name requires 'geobr'. "
             "Please install it via `pip install atlasbr[geo]`."
         ) from e
@@ -155,6 +158,7 @@ def resolve_places_to_ids(places: List[PlaceInput]) -> List[int]:
                     resolved_ids.append(code)
             else:
                 # Fuzzy "Did you mean?" Logic
+                # TODO: This feels smelly. Consider using fuzzywuzzy or similar.
                 state_matches = lookup[lookup["norm_uf"] == s_uf]
                 if not state_matches.empty:
                     # Simple containment check since we might lack fuzzywuzzy

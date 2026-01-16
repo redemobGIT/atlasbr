@@ -115,4 +115,4 @@ def get_cnes_spec(year: int, month: int) -> CnesThemeSpec:
         DeprecationWarning,
         stacklevel=2,
     )
-    return CnesThemeSpec(strategy="bd")
+    return CnesThemeSpec(strategy="bd", year=year, month=month)

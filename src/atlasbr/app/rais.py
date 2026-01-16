@@ -13,7 +13,9 @@ import geopandas as gpd
 import pandas as pd
 
 from atlasbr.core.catalog.rais import get_rais_spec
+from atlasbr.core.geo.utils import to_local_utm
 from atlasbr.core.logic import geocoding, integration
+from atlasbr.core.logic import rais as rais_logic
 from atlasbr.core.types import PlaceInput
 from atlasbr.infra.geo import resolver
 from atlasbr.settings import logger, resolve_billing_id
@@ -22,29 +24,15 @@ from atlasbr.settings import logger, resolve_billing_id
 def load_rais(
     places: list[PlaceInput],
     *,
-    year: int = 2021,
-    strategy: str = bd,
+    year: int = 2024,
+    strategy: str = "bd",
     gcp_billing: Optional[str] = None,
-    geocode: bool = False,
+    geocode: bool = True,
     include_public_sector: bool = False,
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
-    """
-    Loads RAIS Establishment data, optionally enriching it with public sector
-    data.
-
-    Args:
-        places: List of municipalities.
-        year: Year of the dataset.
-        strategy: 'bd_table' (BigQuery) or 'ftp_csv' (not implemented).
-        gcp_billing: Google Cloud Project ID.
-        geocode: If True, attaches coordinates based on CEP.
-        include_public_sector: If True, fetches Schools (INEP) and Health
-            Units (CNES) and merges them to fill gaps in RAIS public
-            administration coverage.
-    """
-    project_id = resolve_billing_id(gcp_billing) if strategy == "bd" else None
     muni_ids = resolver.resolve_places_to_ids(places)
     spec = get_rais_spec(year, strategy)
+    project_id = resolve_billing_id(gcp_billing) if spec.strategy == "bd" else None
 
     if spec.strategy == "bd":
         from atlasbr.infra.adapters import rais_bd
@@ -60,6 +48,8 @@ def load_rais(
         raise NotImplementedError(
             f"Strategy {strategy!r} is defined in catalog but not implemented."
         )
+
+    main_dataset = rais_logic.filter_invalid_legal_nature(main_dataset)
 
     if include_public_sector:
         logger.info("    🧩 Injecting public sector data (Schools + Health)...")
@@ -126,6 +116,13 @@ def load_rais(
                 len(health_h),
             )
 
+    main_dataset = rais_logic.enrich_cnae_metadata(main_dataset, cnae_col="cnae_2")
+    main_dataset = rais_logic.clip_outlier_jobs(
+        main_dataset,
+        jobs_col="quantidade_vinculos_ativos",
+        cnae_col="cnae_2",
+    )
+
     if geocode:
         from atlasbr.infra.adapters import ceps_bd
 
@@ -146,4 +143,5 @@ def load_rais(
         return gdf_rais
 
     logger.info(f"✅ Loaded {len(main_dataset)} establishments (Tabular).")
-    return main_dataset
+    
+    return to_local_utm(main_dataset)
