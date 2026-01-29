@@ -39,7 +39,7 @@ BD_TABLE_RACE_2010 = (
     "setor_censitario_raca_idade_genero_2010"
 )
 BD_TABLE_SETOR_2022 = (
-    "basedosdados.br_ibge_censo_2022.populacao_domicilios"
+    "basedosdados.br_ibge_censo_2022.setor_censitario"
 )
 
 # ---------------------------------------------------------------------
@@ -412,4 +412,44 @@ def get_census_spec(year: int, theme: str, strategy: str) -> CensusThemeSpec:
         f"No catalog entry found for Census {year} ('{theme}') "
         f"using '{strategy}'. "
         "No themes are registered for this year/strategy combination."
+    )
+
+
+def get_census_spec(year: int, theme: str, strategy: str) -> CensusThemeSpec:
+    # 1. Definining fallbacks
+    fallbacks = {
+        "bd": ("bd", "ftp"),
+        "ftp": ("ftp", "bd"),
+    }
+
+    if strategy not in fallbacks:
+        raise ValueError(
+            f"Unknown strategy '{strategy}'. Expected {list(fallbacks.keys())}"
+            )
+
+    # 2. Getting specs
+    search_order = fallbacks[strategy]
+    for s in search_order:
+        if (spec := _CATALOG_INDEX.get((theme, year, s))):
+            return spec
+
+    # 3. Handle Failure
+    # TODO: Warn if fallback was used
+    _raise_spec_not_found(year, theme, search_order)
+
+
+def _raise_spec_not_found(year: int, theme: str, tried: tuple):
+    """Constructs the detailed error message only when needed."""
+    available = sorted({
+        f"{t}/{s}"
+        for (t, y, s)
+        in _CATALOG_INDEX.keys()
+        if y == year
+        })
+    avail_str = ", ".join(available) or "none"
+    
+    raise ValueError(
+        f"No catalog entry for Census {year}, theme '{theme}' "
+        f"(tried {' then '.join(tried)}). "
+        f"Available for {year}: {avail_str}."
     )
